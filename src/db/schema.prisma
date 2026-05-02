@@ -1,0 +1,26 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "./generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Charge {
+  id         String   @id @default(dbgenerated("snowflake()"))
+  name       String
+  /// at int like 13.99 => 1399
+  amount     Int
+  /// at int like 13.99 => 1399
+  paid       Int
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("chargues")
+}
