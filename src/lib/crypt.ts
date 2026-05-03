@@ -1,5 +1,11 @@
-import { randomBytes, createCipheriv, createDecipheriv } from 'crypto'
-import { ENCRYPTION_KEY } from './envs'
+import {
+    randomBytes,
+    createCipheriv,
+    createDecipheriv,
+    createHash,
+} from 'node:crypto'
+import { ENCRYPTION_KEY, PRIVATE_KEY } from './envs'
+import { SignJWT } from 'jose'
 
 const ALGORITHM = 'aes-256-gcm'
 const KEY = Buffer.from(ENCRYPTION_KEY, 'hex')
@@ -39,4 +45,31 @@ export function decrypt(payload: string) {
 
 export function generateRefreshToken() {
     return randomBytes(32).toString('base64url')
+}
+
+export function weakHash(raw: string) {
+    return createHash('sha256').update(raw).digest('hex')
+}
+
+interface CreateJWTProps {
+    sub: string
+    session_id: string
+}
+export async function createJWT({ sub, session_id }: CreateJWTProps) {
+    const issuer =
+        process.env.NODE_ENV === 'production'
+            ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+            : `http://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+
+    const jwt = await new SignJWT({
+        session_id,
+    })
+        .setProtectedHeader({ alg: 'RS256' })
+        .setIssuedAt()
+        .setSubject(sub)
+        .setIssuer(issuer)
+        .setAudience('pagora')
+        .setExpirationTime('1h')
+        .sign(PRIVATE_KEY)
+    return jwt
 }

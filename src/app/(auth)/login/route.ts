@@ -1,15 +1,13 @@
 import { PROVIDERS } from '@/db/generated/prisma/enums'
 import { db } from '@/db/prisma'
 import { COOKIES } from '@/lib/constants'
-import { encrypt, generateRefreshToken } from '@/lib/crypt'
+import { createJWT, encrypt, generateRefreshToken, weakHash } from '@/lib/crypt'
 import {
     DISCORD_APLICATION_ID,
     DISCORD_CLIENT_SECRET,
     DISCORD_URL_REDIRECT,
     NODE_ENV,
-    PRIVATE_KEY,
 } from '@/lib/envs'
-import { SignJWT } from 'jose'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -52,38 +50,36 @@ export async function GET(req: NextRequest) {
 
     const expires_at = new Date(
         Temporal.Now.instant().add({
-            hours: 1,
+            weeks: 1,
         }).epochMilliseconds,
     )
     const refresh_token = generateRefreshToken()
     const session = await db.session.create({
-        data: { expires_at, refresh_token, user_id: user.id },
+        data: {
+            expires_at,
+            refresh_token: weakHash(refresh_token),
+            user_id: user.id,
+        },
     })
 
-    const issuer =
-        process.env.NODE_ENV === 'production'
-            ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-            : `http://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-
-    const jwt = await new SignJWT({
+    const jwt = await createJWT({
+        sub: user.id,
         session_id: session.id,
     })
-        .setProtectedHeader({ alg: 'RS256' })
-        .setIssuedAt()
-        .setSubject(user.id)
-        .setIssuer(issuer)
-        .setAudience('pagora')
-        .setExpirationTime('1h')
-        .sign(PRIVATE_KEY)
 
     const cookieStore = await cookies()
 
-    const maxAge = expires_at.getTime() - Date.now()
     cookieStore.set(COOKIES.SESSION, jwt, {
         httpOnly: true,
         secure: NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge,
+        maxAge: 60_000 * 60,
+    })
+    cookieStore.set(COOKIES.REFRESH, refresh_token, {
+        httpOnly: true,
+        secure: NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 60_000 * 60 * 24 * 7,
     })
 
     return NextResponse.redirect(new URL('/dashboard', req.nextUrl))
