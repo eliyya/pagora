@@ -30,10 +30,10 @@ import {
     DropdownMenuContent,
     DropdownMenuTrigger,
 } from './dropdown-menu'
-import { ReactNode, useState } from 'react'
+import { useState } from 'react'
 import { DataTablePagination } from '../data-table-pagination'
 import { PlusIcon } from 'lucide-react'
-import { chargueStore } from '@/stores/charges.store'
+import { useCreateDialogState } from '@/stores/charges.store'
 
 interface DataTableProps<TData, TValue> {
     columns: ColumnDef<TData, TValue>[]
@@ -46,7 +46,7 @@ export function DataTable<TData, TValue>({
     data,
     rowCount,
 }: DataTableProps<TData, TValue>) {
-    const setOpen = chargueStore(({ togleCreateDialog }) => togleCreateDialog)
+    const setOpen = useCreateDialogState((s) => s.toggle)
     const [sorting, onSortingChange] = useState<SortingState>([])
     const [columnFilters, onColumnFiltersChange] = useState<ColumnFiltersState>(
         [],
