@@ -20,7 +20,7 @@ const config: runtime.GetPrismaClientConfig = {
   "clientVersion": "7.8.0",
   "engineVersion": "3c6e192761c0362d496ed980de936e2f3cebcd3a",
   "activeProvider": "postgresql",
-  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Get a free hosted Postgres database in seconds: `npx create-db`\n\ngenerator client {\n  provider = \"prisma-client\"\n  output   = \"./generated/prisma\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n}\n\nmodel Charge {\n  id         String   @id @default(dbgenerated(\"snowflake()\"))\n  name       String\n  /// at int like 13.99 => 1399\n  amount     Int\n  /// at int like 13.99 => 1399\n  paid       Int\n  created_at DateTime @default(now())\n  updated_at DateTime @updatedAt\n\n  @@map(\"chargues\")\n}\n",
+  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Get a free hosted Postgres database in seconds: `npx create-db`\n\ngenerator client {\n  provider = \"prisma-client\"\n  output   = \"./generated/prisma\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n}\n\nmodel Charge {\n  id         String   @id @default(dbgenerated(\"snowflake()\"))\n  name       String\n  /// at int like 13.99 => 1399\n  amount     Int\n  /// at int like 13.99 => 1399\n  paid       Int      @default(0)\n  created_at DateTime @default(now())\n  updated_at DateTime @updatedAt\n\n  @@map(\"chargues\")\n}\n",
   "runtimeDataModel": {
     "models": {},
     "enums": {},

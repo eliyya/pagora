@@ -18,7 +18,7 @@ model Charge {
   /// at int like 13.99 => 1399
   amount     Int
   /// at int like 13.99 => 1399
-  paid       Int
+  paid       Int      @default(0)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 

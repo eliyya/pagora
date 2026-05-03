@@ -281,7 +281,7 @@ export type ChargeCreateInput = {
   id?: string
   name: string
   amount: number
-  paid: number
+  paid?: number
   created_at?: Date | string
   updated_at?: Date | string
 }
@@ -290,7 +290,7 @@ export type ChargeUncheckedCreateInput = {
   id?: string
   name: string
   amount: number
-  paid: number
+  paid?: number
   created_at?: Date | string
   updated_at?: Date | string
 }
@@ -317,7 +317,7 @@ export type ChargeCreateManyInput = {
   id?: string
   name: string
   amount: number
-  paid: number
+  paid?: number
   created_at?: Date | string
   updated_at?: Date | string
 }

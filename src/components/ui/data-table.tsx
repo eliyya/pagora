@@ -30,18 +30,23 @@ import {
     DropdownMenuContent,
     DropdownMenuTrigger,
 } from './dropdown-menu'
-import { useState } from 'react'
+import { ReactNode, useState } from 'react'
 import { DataTablePagination } from '../data-table-pagination'
+import { PlusIcon } from 'lucide-react'
+import { chargueStore } from '@/stores/charges.store'
 
 interface DataTableProps<TData, TValue> {
     columns: ColumnDef<TData, TValue>[]
     data: TData[]
+    rowCount?: number
 }
 
 export function DataTable<TData, TValue>({
     columns,
     data,
+    rowCount,
 }: DataTableProps<TData, TValue>) {
+    const setOpen = chargueStore(({ togleCreateDialog }) => togleCreateDialog)
     const [sorting, onSortingChange] = useState<SortingState>([])
     const [columnFilters, onColumnFiltersChange] = useState<ColumnFiltersState>(
         [],
@@ -56,6 +61,7 @@ export function DataTable<TData, TValue>({
         columns,
         getCoreRowModel: getCoreRowModel(),
         getPaginationRowModel: getPaginationRowModel(),
+        rowCount,
         onSortingChange,
         getSortedRowModel: getSortedRowModel(),
         onColumnFiltersChange,
@@ -74,15 +80,14 @@ export function DataTable<TData, TValue>({
         <div className='overflow-hidden rounded-md border px-4'>
             <div className='flex items-center justify-between gap-4 py-4'>
                 <Input
-                    placeholder='Filter emails...'
+                    placeholder='Filter chargue...'
                     value={
-                        (table
-                            .getColumn('email')
-                            ?.getFilterValue() as string) ?? ''
+                        (table.getColumn('name')?.getFilterValue() as string) ??
+                        ''
                     }
                     onChange={(event) =>
                         table
-                            .getColumn('email')
+                            .getColumn('name')
                             ?.setFilterValue(event.target.value)
                     }
                     className='max-w-sm'
@@ -113,6 +118,14 @@ export function DataTable<TData, TValue>({
                             ))}
                     </DropdownMenuContent>
                 </DropdownMenu>
+                <Button
+                    disabled={false}
+                    onClick={() => {
+                        setOpen(true)
+                    }}
+                >
+                    <PlusIcon />
+                </Button>
             </div>
             <div className='overflow-hidden rounded-md border'>
                 <Table>
