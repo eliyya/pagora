@@ -1,10 +1,12 @@
 import { PROVIDERS } from '@/db/generated/prisma/enums'
 import { db } from '@/db/prisma'
+import { COOKIES } from '@/lib/constants'
 import { encrypt, generateRefreshToken } from '@/lib/crypt'
 import {
     DISCORD_APLICATION_ID,
     DISCORD_CLIENT_SECRET,
     DISCORD_URL_REDIRECT,
+    NODE_ENV,
     PRIVATE_KEY,
 } from '@/lib/envs'
 import { SignJWT } from 'jose'
@@ -76,11 +78,12 @@ export async function GET(req: NextRequest) {
 
     const cookieStore = await cookies()
 
-    cookieStore.set('session', jwt, {
+    const maxAge = expires_at.getTime() - Date.now()
+    cookieStore.set(COOKIES.SESSION, jwt, {
         httpOnly: true,
-        secure: true,
+        secure: NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge: discordAccess.expires_in * 1000,
+        maxAge,
     })
 
     return NextResponse.redirect(new URL('/dashboard', req.nextUrl))

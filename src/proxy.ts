@@ -2,10 +2,10 @@ import { jwtVerify } from 'jose'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { PUBLIC_KEY } from './lib/envs'
+import { COOKIES } from './lib/constants'
 
-// This function can be marked `async` if using `await` inside
 export async function proxy(request: NextRequest) {
-    const cookie = request.cookies.get('session')?.value
+    const cookie = request.cookies.get(COOKIES.SESSION)?.value
     if (!cookie) {
         return NextResponse.redirect(new URL('/login', request.url))
     }

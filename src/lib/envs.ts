@@ -33,4 +33,5 @@ export const {
     DISCORD_CLIENT_SECRET = '',
     DISCORD_URL_REDIRECT = '',
     ENCRYPTION_KEY = '',
+    NODE_ENV = 'development',
 } = process.env
