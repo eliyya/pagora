@@ -10,8 +10,6 @@ interface ChargeState {
     setData(data: Charge[]): void
     setTotal(total: number): void
     refresh(): void
-    createDialogOpened: boolean
-    togleCreateDialog(value?: boolean): void
 }
 export const chargueStore = create<ChargeState>((set) => ({
     total: 0,
@@ -23,12 +21,19 @@ export const chargueStore = create<ChargeState>((set) => ({
             set({ total, data })
         })
     },
-    createDialogOpened: false,
-    togleCreateDialog: (value) => {
+}))
+
+interface CreateChargeDialogState {
+    open: boolean
+    toggle(value?: boolean): void
+}
+export const useCreateDialogState = create<CreateChargeDialogState>((set) => ({
+    open: false,
+    toggle: (value) => {
         if (typeof value === 'boolean') {
-            set({ createDialogOpened: value })
+            set({ open: value })
         } else {
-            set((state) => ({ createDialogOpened: !state.createDialogOpened }))
+            set((state) => ({ open: !state.open }))
         }
     },
 }))

@@ -34,7 +34,7 @@ import { Label } from '@/components/ui/label'
 import { useActionState, useEffect, useState } from 'react'
 import { createChargueFormAction } from '@/actions/chargue.action'
 import { DEFAULT_CREATE_CHARGE_VALUE } from '@/schemas/charge'
-import { chargueStore } from '@/stores/charges.store'
+import { chargueStore, useCreateDialogState } from '@/stores/charges.store'
 import { shallow, useShallow } from 'zustand/shallow'
 
 export const columns: ColumnDef<Charge>[] = [
@@ -155,25 +155,25 @@ export function DialogDemo() {
         fields: DEFAULT_CREATE_CHARGE_VALUE,
         done: false,
     })
-    const { refresh, open, setOpen } = chargueStore(
+    const refresh = chargueStore(useShallow((state) => state.refresh))
+    const { open, toggle } = useCreateDialogState(
         useShallow((state) => ({
-            refresh: state.refresh,
-            open: state.createDialogOpened,
-            setOpen: state.togleCreateDialog,
+            open: state.open,
+            toggle: state.toggle,
         })),
     )
 
     useEffect(() => {
         if (state.done) {
             queueMicrotask(() => {
-                setOpen(false)
+                toggle(false)
                 refresh()
             })
         }
-    }, [state.done, refresh, setOpen])
+    }, [state.done, refresh, toggle])
 
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={toggle}>
             <DialogContent className='sm:max-w-sm'>
                 <form action={action}>
                     <DialogHeader>
