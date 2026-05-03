@@ -26,16 +26,15 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from '@/components/ui/dialog'
 import { Field, FieldGroup } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useEffect } from 'react'
 import { createChargueFormAction } from '@/actions/chargue.action'
 import { DEFAULT_CREATE_CHARGE_VALUE } from '@/schemas/charge'
 import { chargueStore, useCreateDialogState } from '@/stores/charges.store'
-import { shallow, useShallow } from 'zustand/shallow'
+import { useShallow } from 'zustand/shallow'
 
 export const columns: ColumnDef<Charge>[] = [
     {
