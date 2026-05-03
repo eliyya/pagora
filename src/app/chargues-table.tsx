@@ -1,6 +1,6 @@
 'use client'
 
-import { MoreHorizontalIcon, PlusIcon } from 'lucide-react'
+import { MoreHorizontalIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
