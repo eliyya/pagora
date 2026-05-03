@@ -6,6 +6,7 @@ import {
 } from 'node:crypto'
 import { ENCRYPTION_KEY, PRIVATE_KEY } from './envs'
 import { SignJWT } from 'jose'
+import { HOST_URL } from './constants'
 
 const ALGORITHM = 'aes-256-gcm'
 const KEY = Buffer.from(ENCRYPTION_KEY, 'hex')
@@ -56,18 +57,13 @@ interface CreateJWTProps {
     session_id: string
 }
 export async function createJWT({ sub, session_id }: CreateJWTProps) {
-    const issuer =
-        process.env.NODE_ENV === 'production'
-            ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-            : `http://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-
     const jwt = await new SignJWT({
         session_id,
     })
         .setProtectedHeader({ alg: 'RS256' })
         .setIssuedAt()
         .setSubject(sub)
-        .setIssuer(issuer)
+        .setIssuer(HOST_URL)
         .setAudience('pagora')
         .setExpirationTime('1h')
         .sign(PRIVATE_KEY)

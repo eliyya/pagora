@@ -1,11 +1,10 @@
 import { PROVIDERS } from '@/db/generated/prisma/enums'
 import { db } from '@/db/prisma'
-import { COOKIES } from '@/lib/constants'
+import { COOKIES, DISCORD_URL_REDIRECT } from '@/lib/constants'
 import { createJWT, encrypt, generateRefreshToken, weakHash } from '@/lib/crypt'
 import {
     DISCORD_APLICATION_ID,
     DISCORD_CLIENT_SECRET,
-    DISCORD_URL_REDIRECT,
     NODE_ENV,
 } from '@/lib/envs'
 import { cookies } from 'next/headers'
@@ -21,7 +20,12 @@ interface DiscordAccessTokenResponse {
 export async function GET(req: NextRequest) {
     const code = req.nextUrl.searchParams.get('code')
     if (typeof code !== 'string') {
-        return NextResponse.redirect(process.env.DISCORD_URL_LOGIN!)
+        const url = new URL('https://discord.com/oauth2/authorize')
+        url.searchParams.append('client_id', DISCORD_APLICATION_ID)
+        url.searchParams.append('response_type', 'code')
+        url.searchParams.append('redirect_uri', DISCORD_URL_REDIRECT)
+        url.searchParams.append('scope', 'identify+email+openid')
+        return NextResponse.redirect(url)
     }
     const params = new URLSearchParams({
         client_id: DISCORD_APLICATION_ID,
