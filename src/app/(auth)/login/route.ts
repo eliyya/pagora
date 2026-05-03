@@ -1,3 +1,6 @@
+import { PROVIDERS } from '@/db/generated/prisma/enums'
+import { db } from '@/db/prisma'
+import { encrypt, generateRefreshToken } from '@/lib/crypt'
 import {
     DISCORD_APLICATION_ID,
     DISCORD_CLIENT_SECRET,
@@ -34,41 +37,117 @@ export async function GET(req: NextRequest) {
         },
         body: params,
     })
-    const response = (await request.json()) as DiscordAccessTokenResponse
-    const discord = await getDiscordData(response.access_token)
-    console.log(discord)
+    const discordAccess = (await request.json()) as DiscordAccessTokenResponse
+    const discord = await getDiscordData(discordAccess.access_token)
+
+    const user = await getOrCreateAccount({
+        email: discord.email,
+        username: discord.username,
+        access_token: discordAccess.access_token,
+        refresh_token: discordAccess.refresh_token,
+        provider_acccount_id: discord.id,
+    })
+
+    const expires_at = new Date(
+        Temporal.Now.instant().add({
+            hours: 1,
+        }).epochMilliseconds,
+    )
+    const refresh_token = generateRefreshToken()
+    const session = await db.session.create({
+        data: { expires_at, refresh_token, user_id: user.id },
+    })
 
     const issuer =
         process.env.NODE_ENV === 'production'
             ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
             : `http://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-    const jwt = await new SignJWT({})
+
+    const jwt = await new SignJWT({
+        session_id: session.id,
+    })
         .setProtectedHeader({ alg: 'RS256' })
         .setIssuedAt()
+        .setSubject(user.id)
         .setIssuer(issuer)
         .setAudience('pagora')
         .setExpirationTime('1h')
         .sign(PRIVATE_KEY)
+
     const cookieStore = await cookies()
+
     cookieStore.set('session', jwt, {
         httpOnly: true,
         secure: true,
         sameSite: 'strict',
-        maxAge: response.expires_in * 1000,
+        maxAge: discordAccess.expires_in * 1000,
     })
-    cookieStore.set('discord-session', response.access_token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'strict',
-        maxAge: response.expires_in * 1000,
-    })
-    cookieStore.set('discord-refresh', response.refresh_token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'strict',
-        maxAge: response.expires_in * 1000,
-    })
+
     return NextResponse.redirect(new URL('/dashboard', req.nextUrl))
+}
+
+interface CreateAccountProps {
+    email: string
+    username: string
+    provider_acccount_id: string
+    access_token: string
+    refresh_token: string
+}
+async function getOrCreateAccount({
+    email,
+    username,
+    provider_acccount_id,
+    access_token,
+    refresh_token,
+}: CreateAccountProps) {
+    const user = await db.user.findFirst({
+        where: {
+            accounts: {
+                some: {
+                    provider_acccount_id,
+                    provider: PROVIDERS.discord,
+                },
+            },
+        },
+    })
+    if (!user) {
+        return await db.user.create({
+            data: {
+                email,
+                username,
+                accounts: {
+                    create: {
+                        email,
+                        provider: PROVIDERS.discord,
+                        provider_acccount_id,
+                        access_token: encrypt(access_token),
+                        refresh_token: encrypt(refresh_token),
+                    },
+                },
+            },
+            include: {
+                accounts: true,
+            },
+        })
+    }
+    const account = await db.account.create({
+        data: {
+            email,
+            provider: PROVIDERS.discord,
+            provider_acccount_id,
+            access_token: encrypt(access_token),
+            refresh_token: encrypt(refresh_token),
+            user: {
+                connect: {
+                    id: user.id,
+                },
+            },
+        },
+    })
+    return {
+        ...user,
+        accounts: [account],
+    }
 }
 
 async function getDiscordData(token: string) {

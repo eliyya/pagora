@@ -32,4 +32,5 @@ export const {
     DISCORD_APLICATION_ID = '',
     DISCORD_CLIENT_SECRET = '',
     DISCORD_URL_REDIRECT = '',
+    ENCRYPTION_KEY = '',
 } = process.env
