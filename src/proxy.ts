@@ -5,6 +5,7 @@ import { NODE_ENV, PUBLIC_KEY } from './lib/envs'
 import { COOKIES } from './lib/constants'
 import { db } from './db/prisma'
 import { createJWT, generateRefreshToken, weakHash } from './lib/crypt'
+import { Temporal } from 'temporal-polyfill'
 
 export async function proxy(request: NextRequest) {
     const cookie = request.cookies.get(COOKIES.SESSION)?.value
@@ -47,7 +48,7 @@ async function refreshToken(request: NextRequest, refresh: string) {
     }
     const expires_at = new Date(
         Temporal.Now.instant().add({
-            weeks: 1,
+            hours: 24 * 7,
         }).epochMilliseconds,
     )
     const refresh_token = generateRefreshToken()

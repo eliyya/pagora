@@ -9,6 +9,7 @@ import {
 } from '@/lib/envs'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import { Temporal } from 'temporal-polyfill'
 
 interface DiscordAccessTokenResponse {
     token_type: 'Bearer'
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
 
     const expires_at = new Date(
         Temporal.Now.instant().add({
-            weeks: 1,
+            hours: 24 * 7,
         }).epochMilliseconds,
     )
     const refresh_token = generateRefreshToken()
