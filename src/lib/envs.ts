@@ -1,13 +1,10 @@
 import { importPKCS8, importSPKI } from 'jose'
 
 async function getPrivateKey() {
-    console.log(process.env.PRIVATE_KEY)
-
     try {
         return await importPKCS8(process.env.PRIVATE_KEY!, 'RS256')
     } catch (e) {
         console.log(e)
-
         throw new Error(
             'No se pudo cargar la clave privada para JWT. Puede generar una clave RSA con el comando `openssl genrsa -out private.pem 2048`.',
         )
@@ -17,7 +14,8 @@ async function getPrivateKey() {
 async function getPublicKey() {
     try {
         return await importSPKI(process.env.PUBLIC_KEY!, 'RS256')
-    } catch {
+    } catch (e) {
+        console.log(e)
         throw new Error(
             'No se pudo cargar la clave publica para JWT. Puede generar una clave RSA con el comando `openssl genrsa -out private.pem 2048`.',
         )
