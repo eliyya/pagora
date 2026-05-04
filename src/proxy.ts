@@ -2,7 +2,7 @@ import { jwtVerify } from 'jose'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { NODE_ENV, PUBLIC_KEY } from './lib/envs'
-import { COOKIES } from './lib/constants'
+import { COOKIES, REDIRECT_PATH } from './lib/constants'
 import { db } from './db/prisma'
 import { createJWT, generateRefreshToken, weakHash } from './lib/crypt'
 import { Temporal } from 'temporal-polyfill'
@@ -13,14 +13,14 @@ export async function proxy(request: NextRequest) {
 
     if (!cookie) {
         if (!refresh) {
-            return NextResponse.redirect(new URL('/login', request.url))
+            return NextResponse.redirect(new URL(REDIRECT_PATH, request.url))
         }
         return await refreshToken(request, refresh)
     }
     const jwtPayload = await jwtVerify(cookie, PUBLIC_KEY).catch(() => null)
     if (!jwtPayload) {
         if (!refresh) {
-            return NextResponse.redirect(new URL('/login', request.url))
+            return NextResponse.redirect(new URL(REDIRECT_PATH, request.url))
         }
         return await refreshToken(request, refresh)
     }
@@ -38,13 +38,13 @@ async function refreshToken(request: NextRequest, refresh: string) {
         },
     })
     if (!session) {
-        return NextResponse.redirect(new URL('/login', request.url))
+        return NextResponse.redirect(new URL(REDIRECT_PATH, request.url))
     }
     if (session.expires_at.getTime() < Date.now()) {
         await db.session.delete({
             where: { id: session.id },
         })
-        return NextResponse.redirect(new URL('/login', request.url))
+        return NextResponse.redirect(new URL(REDIRECT_PATH, request.url))
     }
     const expires_at = new Date(
         Temporal.Now.instant().add({
