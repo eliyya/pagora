@@ -46,7 +46,7 @@ CREATE UNIQUE INDEX "users_nickname_key" ON "users"("nickname");
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
 -- CreateIndex
-CREATE INDEX "accounts_provider_provider_acccount_id_idx" ON "accounts"("provider", "provider_acccount_id");
+CREATE UNIQUE INDEX "accounts_provider_provider_acccount_id_key" ON "accounts"("provider", "provider_acccount_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Session_refresh_token_key" ON "Session"("refresh_token");

@@ -39,12 +39,9 @@ export async function createChargueFormAction(
     formData: FormData,
 ): Promise<CreateChargueState> {
     const formObject = Object.fromEntries(formData)
-    console.log(formObject)
     const parsed = CreateChargeSchema.safeParse(formObject)
     if (!parsed.success) {
         const errors = z.flattenError(parsed.error)
-        console.log(errors)
-
         return {
             fields: state.fields,
             errors: errors.fieldErrors,

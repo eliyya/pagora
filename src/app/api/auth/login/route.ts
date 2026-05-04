@@ -6,8 +6,9 @@ import {
     DISCORD_APLICATION_ID,
     DISCORD_CLIENT_SECRET,
     NODE_ENV,
+    PUBLIC_KEY,
 } from '@/lib/envs'
-import { cookies } from 'next/headers'
+import { jwtVerify } from 'jose'
 import { NextRequest, NextResponse } from 'next/server'
 import { Temporal } from 'temporal-polyfill'
 
@@ -20,6 +21,17 @@ interface DiscordAccessTokenResponse {
 }
 export async function GET(req: NextRequest) {
     const code = req.nextUrl.searchParams.get('code')
+
+    const prevsession = req.cookies.get(COOKIES.SESSION)?.value
+    if (!code && prevsession) {
+        const jwtPayload = await jwtVerify(prevsession, PUBLIC_KEY).catch(
+            () => null,
+        )
+        if (jwtPayload) {
+            return NextResponse.redirect(new URL('/dashboard', req.url))
+        }
+    }
+
     if (typeof code !== 'string') {
         const url = new URL('https://discord.com/oauth2/authorize')
         url.searchParams.append('client_id', DISCORD_APLICATION_ID)
@@ -43,6 +55,7 @@ export async function GET(req: NextRequest) {
         body: params,
     })
     const discordAccess = (await request.json()) as DiscordAccessTokenResponse
+
     const discord = await getDiscordData(discordAccess.access_token)
 
     const user = await getOrCreateAccount({
@@ -72,22 +85,25 @@ export async function GET(req: NextRequest) {
         session_id: session.id,
     })
 
-    const cookieStore = await cookies()
+    const res = NextResponse.redirect(new URL('/dashboard', req.url))
 
-    cookieStore.set(COOKIES.SESSION, jwt, {
+    res.cookies.set(COOKIES.SESSION, jwt, {
         httpOnly: true,
         secure: NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 60_000 * 60,
-    })
-    cookieStore.set(COOKIES.REFRESH, refresh_token, {
-        httpOnly: true,
-        secure: NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 60_000 * 60 * 24 * 7,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 60 * 60,
     })
 
-    return NextResponse.redirect(new URL('/dashboard', req.nextUrl))
+    res.cookies.set(COOKIES.REFRESH, refresh_token, {
+        httpOnly: true,
+        secure: NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 60 * 60 * 24 * 7,
+    })
+
+    return res
 }
 
 interface CreateAccountProps {
@@ -115,43 +131,44 @@ async function getOrCreateAccount({
         },
     })
     if (!user) {
-        return await db.user.create({
-            data: {
-                email,
-                username,
-                accounts: {
-                    create: {
-                        email,
-                        provider: PROVIDERS.discord,
-                        provider_acccount_id,
-                        access_token: encrypt(access_token),
-                        refresh_token: encrypt(refresh_token),
+        const nuser = await db.user.findFirst({
+            where: { email },
+            include: { accounts: true },
+        })
+        if (!nuser) {
+            return await db.user.create({
+                data: {
+                    email,
+                    username,
+                    accounts: {
+                        create: {
+                            email,
+                            provider: PROVIDERS.discord,
+                            provider_acccount_id,
+                            access_token: encrypt(access_token),
+                            refresh_token: encrypt(refresh_token),
+                        },
                     },
                 },
-            },
-            include: {
-                accounts: true,
+                include: {
+                    accounts: true,
+                },
+            })
+        }
+        const account = await db.account.create({
+            data: {
+                email,
+                provider: PROVIDERS.discord,
+                provider_acccount_id,
+                access_token: encrypt(access_token),
+                refresh_token: encrypt(refresh_token),
+                user_id: nuser.id,
             },
         })
+        nuser.accounts.push(account)
+        return nuser
     }
-    const account = await db.account.create({
-        data: {
-            email,
-            provider: PROVIDERS.discord,
-            provider_acccount_id,
-            access_token: encrypt(access_token),
-            refresh_token: encrypt(refresh_token),
-            user: {
-                connect: {
-                    id: user.id,
-                },
-            },
-        },
-    })
-    return {
-        ...user,
-        accounts: [account],
-    }
+    return user
 }
 
 async function getDiscordData(token: string) {
