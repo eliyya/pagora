@@ -148,5 +148,25 @@
     }
     html {
         @apply font-sans;
+        scroll-behavior: smooth;
     }
+}
+
+.scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted) transparent;
+}
+
+.scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--muted);
+    border-radius: 9999px;
 }
