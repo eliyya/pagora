@@ -20,6 +20,8 @@ interface DiscordAccessTokenResponse {
 }
 export async function GET(req: NextRequest) {
     const code = req.nextUrl.searchParams.get('code')
+    console.log(code)
+
     if (typeof code !== 'string') {
         const url = new URL('https://discord.com/oauth2/authorize')
         url.searchParams.append('client_id', DISCORD_APLICATION_ID)
@@ -43,6 +45,8 @@ export async function GET(req: NextRequest) {
         body: params,
     })
     const discordAccess = (await request.json()) as DiscordAccessTokenResponse
+    console.log('da', discordAccess)
+
     const discord = await getDiscordData(discordAccess.access_token)
 
     const user = await getOrCreateAccount({
@@ -72,22 +76,25 @@ export async function GET(req: NextRequest) {
         session_id: session.id,
     })
 
-    const cookieStore = await cookies()
+    const res = NextResponse.redirect(new URL('/dashboard', req.url))
 
-    cookieStore.set(COOKIES.SESSION, jwt, {
+    res.cookies.set(COOKIES.SESSION, jwt, {
         httpOnly: true,
         secure: NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 60_000 * 60,
-    })
-    cookieStore.set(COOKIES.REFRESH, refresh_token, {
-        httpOnly: true,
-        secure: NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 60_000 * 60 * 24 * 7,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 60 * 60,
     })
 
-    return NextResponse.redirect(new URL('/dashboard', req.nextUrl))
+    res.cookies.set(COOKIES.REFRESH, refresh_token, {
+        httpOnly: true,
+        secure: NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 60 * 60 * 24 * 7,
+    })
+
+    return res
 }
 
 interface CreateAccountProps {
@@ -104,6 +111,14 @@ async function getOrCreateAccount({
     access_token,
     refresh_token,
 }: CreateAccountProps) {
+    console.log({
+        email,
+        username,
+        provider_acccount_id,
+        access_token,
+        refresh_token,
+    })
+
     const user = await db.user.findFirst({
         where: {
             accounts: {
