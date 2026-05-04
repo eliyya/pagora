@@ -1,8 +1,6 @@
 import { importPKCS8, importSPKI } from 'jose'
 
 async function getPrivateKey() {
-    console.log(process.env.PRIVATE_KEY)
-
     try {
         return await importPKCS8(process.env.PRIVATE_KEY!, 'RS256')
     } catch (e) {
