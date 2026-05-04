@@ -9,6 +9,7 @@ import {
     TrendingUp,
     Zap,
 } from 'lucide-react'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 
 export default async function Home() {
@@ -24,9 +25,13 @@ export default async function Home() {
             {/* ── NAVBAR ── */}
             <header className='relative z-20 mx-auto flex max-w-6xl items-center justify-between px-6 py-5'>
                 <div className='flex items-center gap-2'>
-                    <div className='flex size-9 items-center justify-center rounded-xl bg-linear-to-br from-accent to-primary text-white shadow-md shadow-primary/30'>
-                        <span className='text-base font-black'>P</span>
-                    </div>
+                    <Image
+                        src='/logo.png'
+                        alt='Pagora logo'
+                        width={36}
+                        height={36}
+                        className='rounded-xl shadow-md shadow-primary/30'
+                    />
                     <span className='text-lg font-bold text-foreground tracking-tight'>
                         Pagora
                     </span>
@@ -57,60 +62,76 @@ export default async function Home() {
             </header>
 
             {/* ── HERO ── */}
-            <section className='relative z-10 mx-auto flex max-w-4xl flex-col items-center px-6 pt-20 pb-28 text-center'>
-                <span className='mb-5 inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent/15 px-4 py-1.5 text-xs font-medium text-foreground/80'>
-                    <Sparkles className='size-3.5 text-accent' />
-                    La plataforma más simple para cobrar
-                </span>
-
-                <h1 className='text-5xl font-bold leading-tight tracking-tight text-foreground sm:text-6xl'>
-                    Cobra sin complicaciones,{' '}
-                    <span className='bg-linear-to-r from-accent to-primary bg-clip-text text-transparent'>
-                        queda en control.
+            <section className='relative z-10 mx-auto flex min-h-150 max-w-7xl items-center overflow-visible px-6 pt-20 pb-40'>
+                {/* texto lado izquierdo */}
+                <div className='relative z-10 flex max-w-xl flex-col items-start text-left'>
+                    <span className='mb-5 inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent/15 px-4 py-1.5 text-xs font-medium text-foreground/80'>
+                        <Sparkles className='size-3.5 text-accent' />
+                        La plataforma más simple para cobrar
                     </span>
-                </h1>
 
-                <p className='mt-6 max-w-xl text-base text-muted-foreground'>
-                    Pagora centraliza tus cobros, registra pagos y te da una
-                    vista clara de quién te debe y cuánto. Sin Excel, sin caos.
-                </p>
+                    <h1 className='text-5xl font-bold leading-tight tracking-tight text-foreground sm:text-6xl'>
+                        Cobra sin complicaciones,{' '}
+                        <span className='bg-linear-to-r from-accent to-primary bg-clip-text text-transparent'>
+                            queda en control.
+                        </span>
+                    </h1>
 
-                <div className='mt-8 flex flex-col items-center gap-3 sm:flex-row'>
-                    <a href='/auth/login'>
-                        <Button
-                            size='lg'
-                            className='h-12 gap-2 rounded-xl bg-accent px-6 text-accent-foreground shadow-lg shadow-accent/40 transition-all hover:scale-[1.02] hover:bg-accent/90 hover:shadow-xl hover:shadow-accent/50'
-                        >
-                            Comenzar gratis
-                            <ArrowRight className='size-4' />
-                        </Button>
-                    </a>
-                    <a href='#features'>
-                        <Button
-                            variant='outline'
-                            size='lg'
-                            className='h-12 rounded-xl px-6'
-                        >
-                            Ver características
-                        </Button>
-                    </a>
+                    <p className='mt-6 max-w-md text-base text-muted-foreground'>
+                        Pagora centraliza tus cobros, registra pagos y te da una
+                        vista clara de quién te debe y cuánto. Sin Excel, sin
+                        caos.
+                    </p>
+
+                    <div className='mt-8 flex flex-col gap-3 sm:flex-row'>
+                        <a href='/auth/login'>
+                            <Button
+                                size='lg'
+                                className='h-12 gap-2 rounded-xl bg-accent px-6 text-accent-foreground shadow-lg shadow-accent/40 transition-all hover:scale-[1.02] hover:bg-accent/90 hover:shadow-xl hover:shadow-accent/50'
+                            >
+                                Comenzar gratis
+                                <ArrowRight className='size-4' />
+                            </Button>
+                        </a>
+                        <a href='#features'>
+                            <Button
+                                variant='outline'
+                                size='lg'
+                                className='h-12 rounded-xl px-6'
+                            >
+                                Ver características
+                            </Button>
+                        </a>
+                    </div>
+
+                    {/* trust badges */}
+                    <div className='mt-10 flex flex-wrap gap-4 text-xs text-muted-foreground'>
+                        {[
+                            { icon: ShieldCheck, label: 'OAuth seguro' },
+                            { icon: Zap, label: 'Sin configuración' },
+                            { icon: Clock, label: 'Listo en segundos' },
+                        ].map(({ icon: Icon, label }) => (
+                            <span
+                                key={label}
+                                className='inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card/80 px-3 py-1.5'
+                            >
+                                <Icon className='size-3.5 text-accent' />
+                                {label}
+                            </span>
+                        ))}
+                    </div>
                 </div>
 
-                {/* trust badges */}
-                <div className='mt-10 flex flex-wrap justify-center gap-4 text-xs text-muted-foreground'>
-                    {[
-                        { icon: ShieldCheck, label: 'OAuth seguro' },
-                        { icon: Zap, label: 'Sin configuración' },
-                        { icon: Clock, label: 'Listo en segundos' },
-                    ].map(({ icon: Icon, label }) => (
-                        <span
-                            key={label}
-                            className='inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card/80 px-3 py-1.5'
-                        >
-                            <Icon className='size-3.5 text-accent' />
-                            {label}
-                        </span>
-                    ))}
+                {/* laptop – posición absoluta al lado derecho */}
+                <div className='pointer-events-none absolute right-0 top-1/2 w-[58%] -translate-y-1/2 translate-x-[8%]'>
+                    <Image
+                        src='/laptop.png'
+                        alt='Vista previa del dashboard de Pagora'
+                        width={1280}
+                        height={800}
+                        className='w-full object-cover'
+                        priority
+                    />
                 </div>
             </section>
 
@@ -258,9 +279,13 @@ export default async function Home() {
             <footer className='relative z-10 border-t border-border/60 px-6 py-8'>
                 <div className='mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 text-xs text-muted-foreground sm:flex-row'>
                     <div className='flex items-center gap-2'>
-                        <div className='flex size-6 items-center justify-center rounded-lg bg-primary text-primary-foreground'>
-                            <span className='text-xs font-bold'>P</span>
-                        </div>
+                        <Image
+                            src='/logo.png'
+                            alt='Pagora logo'
+                            width={24}
+                            height={24}
+                            className='rounded-md'
+                        />
                         <span className='font-medium text-foreground'>
                             Pagora
                         </span>

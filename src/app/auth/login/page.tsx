@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { ArrowRight, Clock3, ShieldCheck, Sparkles } from 'lucide-react'
+import Image from 'next/image'
 import { SiDiscord } from 'react-icons/si'
 
 export default function page() {
@@ -46,10 +47,14 @@ export default function page() {
                         <article className='rounded-[27px] border border-border/80 bg-card/95 p-6 backdrop-blur-md sm:p-8'>
                             <div className='mb-6 flex items-center justify-between'>
                                 <div className='flex items-center gap-3'>
-                                    <div className='flex size-12 items-center justify-center rounded-2xl bg-linear-to-br from-accent to-primary text-primary-foreground shadow-md shadow-primary/30'>
-                                        <span className='text-xl font-bold'>
-                                            P
-                                        </span>
+                                    <div className='flex size-12 items-center justify-center overflow-hidden rounded-2xl shadow-md shadow-primary/30'>
+                                        <Image
+                                            src='/logo.png'
+                                            alt='Pagora logo'
+                                            width={48}
+                                            height={48}
+                                            className='size-full object-cover'
+                                        />
                                     </div>
                                     <div>
                                         <p className='text-lg font-semibold text-foreground'>
