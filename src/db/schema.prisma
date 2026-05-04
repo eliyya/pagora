@@ -28,15 +28,27 @@ model Charge {
   @@map("chargues")
 }
 
-model Card {
-  id      String @id @default(dbgenerated("snowflake()"))
-  name    String
-  user_id String
+enum CARD_BRAND {
+  mastercard
+  visa
+  amex
+}
 
-  user    User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+model Card {
+  id           String     @id @default(dbgenerated("snowflake()"))
+  name         String
+  owner_id     String
+  last4        String
+  closing_day  Int
+  due_day      Int
+  credit_limit Int
+  bank         String?
+  brand        CARD_BRAND @default(mastercard)
+
+  owner   User     @relation(fields: [owner_id], references: [id], onDelete: Cascade)
   charges Charge[]
 
-  @@unique([user_id, name])
+  @@unique([owner_id, name])
   @@map("cards")
 }
 
