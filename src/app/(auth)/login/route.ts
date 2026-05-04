@@ -20,7 +20,6 @@ interface DiscordAccessTokenResponse {
 }
 export async function GET(req: NextRequest) {
     const code = req.nextUrl.searchParams.get('code')
-    console.log(code)
 
     if (typeof code !== 'string') {
         const url = new URL('https://discord.com/oauth2/authorize')
@@ -45,7 +44,6 @@ export async function GET(req: NextRequest) {
         body: params,
     })
     const discordAccess = (await request.json()) as DiscordAccessTokenResponse
-    console.log('da', discordAccess)
 
     const discord = await getDiscordData(discordAccess.access_token)
 
@@ -111,14 +109,6 @@ async function getOrCreateAccount({
     access_token,
     refresh_token,
 }: CreateAccountProps) {
-    console.log({
-        email,
-        username,
-        provider_acccount_id,
-        access_token,
-        refresh_token,
-    })
-
     const user = await db.user.findFirst({
         where: {
             accounts: {

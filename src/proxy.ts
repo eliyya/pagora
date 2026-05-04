@@ -10,7 +10,6 @@ import { Temporal } from 'temporal-polyfill'
 export async function proxy(request: NextRequest) {
     const cookie = request.cookies.get(COOKIES.SESSION)?.value
     const refresh = request.cookies.get(COOKIES.REFRESH)?.value
-    console.log('proxy', { cookie, refresh })
 
     if (!cookie) {
         if (!refresh) {
@@ -69,13 +68,13 @@ async function refreshToken(request: NextRequest, refresh: string) {
         httpOnly: true,
         secure: NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge: 60_000 * 60,
+        maxAge: 60 * 60,
     })
     response.cookies.set(COOKIES.REFRESH, refresh_token, {
         httpOnly: true,
         secure: NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge: 60_000 * 60,
+        maxAge: 60 * 60 * 24 * 7,
     })
     return response
 }
