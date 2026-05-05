@@ -17,11 +17,11 @@ export default function page() {
                         <div className='space-y-5'>
                             <span className='inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-medium text-foreground/80'>
                                 <Sparkles className='size-3.5 text-accent' />
-                                Plataforma de cobros
+                                Plataforma de gestión
                             </span>
                             <div>
                                 <h1 className='text-4xl leading-tight font-semibold tracking-tight text-foreground'>
-                                    Pagora te ayuda a cobrar sin friccion.
+                                    Pagora te ayuda a gestionar tus tarjetas.
                                 </h1>
                                 <p className='mt-3 max-w-md text-sm text-muted-foreground'>
                                     Gestiona cargos, revisa estados de pago y

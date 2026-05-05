@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
         where: { owner_id: user.id },
     })
     if (!card) {
-        return NextResponse.redirect(new URL('/auth/login', req.nextUrl))
+        return NextResponse.redirect(new URL('/dashboard/card', req.nextUrl))
     }
     return NextResponse.redirect(
         new URL(`/dashboard/card/${card.id}`, req.nextUrl),
