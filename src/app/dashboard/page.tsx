@@ -7,6 +7,7 @@ import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 
 import data from './data.json'
 import { Suspense } from 'react'
+import { RegisterCardDialog } from '@/components/register-card-dialog'
 
 export default function Page() {
     return (
@@ -34,6 +35,7 @@ export default function Page() {
                         </div>
                     </div>
                 </div>
+                <RegisterCardDialog />
             </SidebarInset>
         </SidebarProvider>
     )
