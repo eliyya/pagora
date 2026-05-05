@@ -7,7 +7,7 @@ import {
 } from '@/schemas/card.schema'
 import { revalidateTag } from 'next/cache'
 import { z } from 'zod'
-import { getCurrentUser } from './users.actionl'
+import { getCurrentUserAction } from './users.actionl'
 
 // interface CreateChargueProps extends CreateCard {}
 export async function createCardAction({
@@ -41,12 +41,13 @@ interface CreateChargueState {
     fieldErrors?: ReturnType<typeof z.flattenError<CreateCard>>['fieldErrors']
     formErrors?: string[]
     done?: boolean
+    lastCardId?: string
 }
 export async function createCardFormAction(
     state: CreateChargueState,
     formData: FormData,
 ): Promise<CreateChargueState> {
-    const user = await getCurrentUser()
+    const user = await getCurrentUserAction()
     if (!user) {
         return {
             fields: state.fields,
@@ -65,7 +66,7 @@ export async function createCardFormAction(
         }
     }
 
-    await createCardAction({
+    const newCard = await createCardAction({
         ...parsed.data,
         owner_id: user.id,
     })
@@ -73,5 +74,17 @@ export async function createCardFormAction(
     return {
         fields: DEFAULT_CREATE_CARD_VALUE,
         done: true,
+        lastCardId: newCard.id,
     }
+}
+
+export async function getOwnCardsAction() {
+    const user = await getCurrentUserAction()
+    if (!user) {
+        return []
+    }
+    const cards = db.card.findMany({
+        where: { owner_id: user.id },
+    })
+    return cards
 }

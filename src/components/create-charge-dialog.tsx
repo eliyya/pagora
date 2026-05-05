@@ -10,7 +10,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Field, FieldGroup } from '@/components/ui/field'
+import { Field, FieldError, FieldGroup } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useActionState, useEffect } from 'react'
@@ -18,8 +18,10 @@ import { createChargueFormAction } from '@/actions/chargue.action'
 import { DEFAULT_CREATE_CHARGE_VALUE } from '@/schemas/charge'
 import { chargueStore, useCreateDialogState } from '@/stores/charges.store'
 import { useShallow } from 'zustand/shallow'
+import { useParams } from 'next/navigation'
 
 export function CreateChargeDialog() {
+    const params = useParams<{ card_id: string }>()
     const [state, action] = useActionState(createChargueFormAction, {
         fields: DEFAULT_CREATE_CHARGE_VALUE,
         done: false,
@@ -59,6 +61,9 @@ export function CreateChargeDialog() {
                                 name='name'
                                 defaultValue={state.fields?.name ?? ''}
                             />
+                            {state.errors?.name?.map((e, i) => (
+                                <FieldError key={i}>{e}</FieldError>
+                            ))}
                         </Field>
                         <Field>
                             <Label htmlFor='username-1'>Amount</Label>
@@ -70,8 +75,16 @@ export function CreateChargeDialog() {
                                 min={0}
                                 defaultValue={state.fields?.amount ?? ''}
                             />
+                            {state.errors?.amount?.map((e, i) => (
+                                <FieldError key={i}>{e}</FieldError>
+                            ))}
                         </Field>
                     </FieldGroup>
+                    <input
+                        type='hidden'
+                        name='card_id'
+                        value={params.card_id}
+                    />
                     <DialogFooter>
                         <DialogClose
                             render={<Button variant='outline'>Cancel</Button>}

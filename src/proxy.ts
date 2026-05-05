@@ -18,6 +18,7 @@ export async function proxy(request: NextRequest) {
         return await refreshToken(request, refresh)
     }
     const jwtPayload = await jwtVerify(cookie, PUBLIC_KEY).catch(() => null)
+
     if (!jwtPayload) {
         if (!refresh) {
             return NextResponse.redirect(new URL(REDIRECT_PATH, request.url))

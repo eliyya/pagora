@@ -1,6 +1,5 @@
 'use client'
 
-import * as React from 'react'
 import {
     closestCenter,
     DndContext,
@@ -104,6 +103,8 @@ import { DataTableColumnHeader } from './data-table-column-header'
 import { chargueStore, useCreateDialogState } from '@/stores/charges.store'
 import { Charge } from '@/db/generated/prisma/browser'
 import { CreateChargeDialog } from './create-charge-dialog'
+import { useEffect, useId, useMemo, useState } from 'react'
+import { useShallow } from 'zustand/shallow'
 
 export const schema = z.object({
     id: z.number(),
@@ -368,35 +369,38 @@ function DraggableRow({ row }: { row: Row<Charge> }) {
         </TableRow>
     )
 }
-export function DataTable({
+export function ChargesTable({
     data: initialData,
 }: {
     data: z.infer<typeof schema>[]
 }) {
     const openCreateDialog = useCreateDialogState((s) => s.toggle)
     const data = chargueStore((s) => s.data)
-    const rowCount = chargueStore((s) => s.total)
-    const [, setData] = React.useState(() => initialData)
-    const [rowSelection, setRowSelection] = React.useState({})
-    const [columnVisibility, setColumnVisibility] =
-        React.useState<VisibilityState>({})
-    const [columnFilters, setColumnFilters] =
-        React.useState<ColumnFiltersState>([])
-    const [sorting, setSorting] = React.useState<SortingState>([])
-    const [pagination, setPagination] = React.useState({
+    const { rowCount, refresh } = chargueStore(
+        useShallow((s) => ({ rowCount: s.total, refresh: s.refresh })),
+    )
+    const [, setData] = useState(() => initialData)
+    const [rowSelection, setRowSelection] = useState({})
+    const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
+        {},
+    )
+    const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+    const [sorting, setSorting] = useState<SortingState>([])
+    const [pagination, setPagination] = useState({
         pageIndex: 0,
         pageSize: 10,
     })
-    const sortableId = React.useId()
+    const sortableId = useId()
     const sensors = useSensors(
         useSensor(MouseSensor, {}),
         useSensor(TouchSensor, {}),
         useSensor(KeyboardSensor, {}),
     )
-    const dataIds = React.useMemo<UniqueIdentifier[]>(
+    const dataIds = useMemo<UniqueIdentifier[]>(
         () => data?.map(({ id }) => id) || [],
         [data],
     )
+    // eslint-disable-next-line react-hooks/incompatible-library
     const table = useReactTable({
         data,
         columns,
@@ -432,6 +436,9 @@ export function DataTable({
             })
         }
     }
+    useEffect(() => {
+        refresh()
+    }, [refresh])
     return (
         <>
             <Tabs
@@ -543,13 +550,13 @@ export function DataTable({
                             </DropdownMenuContent>
                         </DropdownMenu>
                         <Button
-                            variant='outline'
+                            variant='default'
                             size='sm'
                             onClick={() => openCreateDialog(true)}
                         >
                             <PlusIcon />
                             <span className='hidden lg:inline'>
-                                Add Section
+                                Create Charge
                             </span>
                         </Button>
                     </div>

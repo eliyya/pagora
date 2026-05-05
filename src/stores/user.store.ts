@@ -1,6 +1,6 @@
 'use client'
 
-import { getCurrentUser } from '@/actions/users.actionl'
+import { getCurrentUserAction } from '@/actions/users.actionl'
 import { create } from 'zustand'
 
 interface UserStore {
@@ -16,7 +16,7 @@ export const useUser = create<UserStore>((set) => ({
     id: '',
     avatar: '/avatars/shadcn.jpg',
     fetch: () => {
-        getCurrentUser().then((user) => {
+        getCurrentUserAction().then((user) => {
             if (user) {
                 set({ email: user.email, username: user.username, id: user.id })
             }

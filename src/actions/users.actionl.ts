@@ -6,7 +6,7 @@ import { db } from '@/db/prisma'
 import { PUBLIC_KEY } from '@/lib/envs'
 import { COOKIES } from '@/lib/constants'
 
-export async function getCurrentUser() {
+export async function getCurrentUserAction() {
     try {
         const cookieStore = await cookies()
         const token = cookieStore.get(COOKIES.SESSION)?.value
