@@ -1,12 +1,6 @@
 'use client'
 
-import {
-    ChevronRight,
-    CreditCardIcon,
-    PlusCircle,
-    type LucideIcon,
-} from 'lucide-react'
-
+import { ChevronRight, CreditCardIcon, PlusCircle } from 'lucide-react'
 import {
     Collapsible,
     CollapsibleContent,
@@ -25,28 +19,24 @@ import {
 import { useCards, useCreateCardDialog } from '@/stores/card.store'
 import { useShallow } from 'zustand/shallow'
 import { useEffect } from 'react'
+import { useParams } from 'next/navigation'
 
-export function NavMain({
-    items,
-}: {
-    items: {
-        title: string
-        url: string
-        icon?: LucideIcon
-        isActive?: boolean
-        items?: {
-            title: string
-            url: string
-        }[]
-    }[]
-}) {
+export function NavMain() {
     const openDialog = useCreateCardDialog((s) => s.toggle)
-    const { cards, refresh } = useCards(
-        useShallow((s) => ({ cards: s.cards, refresh: s.refresh })),
+    const { cards, refresh, selectCard } = useCards(
+        useShallow((s) => ({
+            cards: s.cards,
+            refresh: s.refreshCard,
+            selectCard: s.setCurrentCard,
+        })),
     )
+    const { card_id } = useParams<{ card_id: string }>()
     useEffect(() => {
         refresh()
-    }, [refresh])
+        if (card_id) {
+            selectCard(card_id)
+        }
+    }, [card_id, refresh, selectCard])
     return (
         <SidebarGroup>
             <SidebarGroupLabel>Cards</SidebarGroupLabel>

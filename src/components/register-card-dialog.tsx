@@ -14,7 +14,6 @@ import { Field, FieldError, FieldGroup } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ComponentProps, useActionState, useEffect } from 'react'
-import { chargueStore } from '@/stores/charges.store'
 import { useShallow } from 'zustand/shallow'
 import { DEFAULT_CREATE_CARD_VALUE } from '@/schemas/card.schema'
 import { createCardFormAction } from '@/actions/card.action'
@@ -25,7 +24,6 @@ export function RegisterCardDialog(props: ComponentProps<typeof Dialog>) {
         fields: DEFAULT_CREATE_CARD_VALUE,
         done: false,
     })
-    const refresh = chargueStore(useShallow((state) => state.refresh))
     const { open, toggle } = useCreateCardDialog(
         useShallow((state) => ({
             open: state.open,
@@ -38,11 +36,10 @@ export function RegisterCardDialog(props: ComponentProps<typeof Dialog>) {
         if (state.done) {
             queueMicrotask(() => {
                 toggle(false)
-                refresh()
                 push(`/dashboard/card/${state.lastCardId}`)
             })
         }
-    }, [state.done, refresh, toggle, state, push])
+    }, [state.done, toggle, state, push])
 
     return (
         <Dialog open={open} onOpenChange={toggle} {...props}>

@@ -100,11 +100,12 @@ import {
     TrendingUpIcon,
 } from 'lucide-react'
 import { DataTableColumnHeader } from './data-table-column-header'
-import { chargueStore, useCreateDialogState } from '@/stores/charges.store'
+import { useCreateDialogState } from '@/stores/charges.store'
 import { Charge } from '@/db/generated/prisma/browser'
 import { CreateChargeDialog } from './create-charge-dialog'
 import { useEffect, useId, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
+import { useCards } from '@/stores/card.store'
 
 export const schema = z.object({
     id: z.number(),
@@ -375,9 +376,11 @@ export function ChargesTable({
     data: z.infer<typeof schema>[]
 }) {
     const openCreateDialog = useCreateDialogState((s) => s.toggle)
-    const data = chargueStore((s) => s.data)
-    const { rowCount, refresh } = chargueStore(
-        useShallow((s) => ({ rowCount: s.total, refresh: s.refresh })),
+    const { rowCount, data } = useCards(
+        useShallow((s) => ({
+            rowCount: s.chargesCount,
+            data: s.charges,
+        })),
     )
     const [, setData] = useState(() => initialData)
     const [rowSelection, setRowSelection] = useState({})
@@ -400,6 +403,7 @@ export function ChargesTable({
         () => data?.map(({ id }) => id) || [],
         [data],
     )
+
     // eslint-disable-next-line react-hooks/incompatible-library
     const table = useReactTable({
         data,
@@ -436,9 +440,6 @@ export function ChargesTable({
             })
         }
     }
-    useEffect(() => {
-        refresh()
-    }, [refresh])
     return (
         <>
             <Tabs
