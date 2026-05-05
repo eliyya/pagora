@@ -6,15 +6,24 @@ import {
     CreateCharge,
     DEFAULT_CREATE_CHARGE_VALUE,
 } from '@/schemas/charge'
-import { cacheTag, revalidateTag } from 'next/cache'
 import z from 'zod'
+import { getCurrentUserAction } from './users.actionl'
 
-export async function getChargesAction() {
-    'use cache'
-    cacheTag('charges')
-
+interface GetChargesActionProps {
+    card_id: string
+}
+export async function getChargesAction({ card_id }: GetChargesActionProps) {
+    const user = await getCurrentUserAction()
+    if (!user) {
+        return {
+            total: 0,
+            data: [],
+        }
+    }
     const count = await db.charge.count()
-    const chargues = await db.charge.findMany()
+    const chargues = await db.charge.findMany({
+        where: { card_id },
+    })
     return {
         total: count,
         data: chargues,
@@ -28,7 +37,6 @@ export async function createChargue(data: CreateChargueProps) {
     const charge = await db.charge.create({
         data,
     })
-    revalidateTag('charges', 'max')
     return charge
 }
 

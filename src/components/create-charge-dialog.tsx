@@ -16,9 +16,10 @@ import { Label } from '@/components/ui/label'
 import { useActionState, useEffect } from 'react'
 import { createChargueFormAction } from '@/actions/chargue.action'
 import { DEFAULT_CREATE_CHARGE_VALUE } from '@/schemas/charge'
-import { chargueStore, useCreateDialogState } from '@/stores/charges.store'
+import { useCreateDialogState } from '@/stores/charges.store'
 import { useShallow } from 'zustand/shallow'
 import { useParams } from 'next/navigation'
+import { useCards } from '@/stores/card.store'
 
 export function CreateChargeDialog() {
     const params = useParams<{ card_id: string }>()
@@ -26,7 +27,7 @@ export function CreateChargeDialog() {
         fields: DEFAULT_CREATE_CHARGE_VALUE,
         done: false,
     })
-    const refresh = chargueStore(useShallow((state) => state.refresh))
+    const refresh = useCards(useShallow((state) => state.refreshCharges))
     const { open, toggle } = useCreateDialogState(
         useShallow((state) => ({
             open: state.open,

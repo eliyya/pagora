@@ -33,8 +33,9 @@ import { Label } from '@/components/ui/label'
 import { useActionState, useEffect } from 'react'
 import { createChargueFormAction } from '@/actions/chargue.action'
 import { DEFAULT_CREATE_CHARGE_VALUE } from '@/schemas/charge'
-import { chargueStore, useCreateDialogState } from '@/stores/charges.store'
+import { useCreateDialogState } from '@/stores/charges.store'
 import { useShallow } from 'zustand/shallow'
+import { useCards } from '@/stores/card.store'
 
 export const columns: ColumnDef<Charge>[] = [
     {
@@ -133,13 +134,12 @@ export const columns: ColumnDef<Charge>[] = [
 ]
 
 export function ChargesTable() {
-    const total = chargueStore((s) => s.total)
-    const data = chargueStore((s) => s.data)
-    const refresh = chargueStore((s) => s.refresh)
-
-    useEffect(() => {
-        refresh()
-    }, [refresh])
+    const { total, data } = useCards(
+        useShallow((s) => ({
+            total: s.chargesCount,
+            data: s.charges,
+        })),
+    )
 
     return (
         <>
@@ -154,7 +154,12 @@ export function DialogDemo() {
         fields: DEFAULT_CREATE_CHARGE_VALUE,
         done: false,
     })
-    const refresh = chargueStore(useShallow((state) => state.refresh))
+
+    const { refresh } = useCards(
+        useShallow((s) => ({
+            refresh: s.refreshCharges,
+        })),
+    )
     const { open, toggle } = useCreateDialogState(
         useShallow((state) => ({
             open: state.open,
