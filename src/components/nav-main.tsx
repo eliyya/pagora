@@ -2,7 +2,7 @@
 
 import {
     ChevronRight,
-    MailIcon,
+    CreditCardIcon,
     PlusCircle,
     type LucideIcon,
 } from 'lucide-react'
@@ -22,7 +22,9 @@ import {
     SidebarMenuSubButton,
     SidebarMenuSubItem,
 } from '@/components/ui/sidebar'
-import { useCreateCardDialog } from '@/stores/card.store'
+import { useCards, useCreateCardDialog } from '@/stores/card.store'
+import { useShallow } from 'zustand/shallow'
+import { useEffect } from 'react'
 
 export function NavMain({
     items,
@@ -39,6 +41,12 @@ export function NavMain({
     }[]
 }) {
     const openDialog = useCreateCardDialog((s) => s.toggle)
+    const { cards, refresh } = useCards(
+        useShallow((s) => ({ cards: s.cards, refresh: s.refresh })),
+    )
+    useEffect(() => {
+        refresh()
+    }, [refresh])
     return (
         <SidebarGroup>
             <SidebarGroupLabel>Cards</SidebarGroupLabel>
@@ -52,40 +60,32 @@ export function NavMain({
                         <PlusCircle />
                         <span>Register Card</span>
                     </SidebarMenuButton>
-                    {/* <Button
-                        size='icon'
-                        className='size-8 group-data-[collapsible=icon]:opacity-0'
-                        variant='outline'
-                    >
-                        <MailIcon />
-                        <span className='sr-only'>Inbox</span>
-                    </Button> */}
                 </SidebarMenuItem>
                 <Collapsible defaultOpen={true} className='group/collapsible'>
                     <SidebarMenuItem>
                         <CollapsibleTrigger
                             render={
-                                <SidebarMenuButton tooltip='Your cards added.'>
-                                    {/* {icon && <item.icon />} */}
-                                    <span>Master Card</span>
-                                    <ChevronRight className='ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90' />
-                                </SidebarMenuButton>
+                                <SidebarMenuButton tooltip='Your cards added.' />
                             }
-                        ></CollapsibleTrigger>
+                        >
+                            <CreditCardIcon />
+                            <span>Own Cards</span>
+                            <ChevronRight className='ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90' />
+                        </CollapsibleTrigger>
                         <CollapsibleContent>
                             <SidebarMenuSub>
-                                {items.map((subItem) => (
-                                    <SidebarMenuSubItem key={subItem.title}>
+                                {cards.map((card) => (
+                                    <SidebarMenuSubItem key={card.id}>
                                         <SidebarMenuSubButton
                                             render={
-                                                <a href={subItem.url}>
-                                                    {subItem.icon && (
-                                                        <subItem.icon />
-                                                    )}
-                                                    <span>{subItem.title}</span>
-                                                </a>
+                                                <a
+                                                    href={`/dashboard/card/${card.id}`}
+                                                />
                                             }
-                                        ></SidebarMenuSubButton>
+                                        >
+                                            {/* {card.icon && <card.icon />} */}
+                                            <span>{card.name}</span>
+                                        </SidebarMenuSubButton>
                                     </SidebarMenuSubItem>
                                 ))}
                             </SidebarMenuSub>

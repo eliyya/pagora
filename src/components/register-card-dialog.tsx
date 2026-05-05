@@ -10,17 +10,17 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Field, FieldGroup } from '@/components/ui/field'
+import { Field, FieldError, FieldGroup } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useActionState, useEffect } from 'react'
+import { ComponentProps, useActionState, useEffect } from 'react'
 import { chargueStore } from '@/stores/charges.store'
 import { useShallow } from 'zustand/shallow'
 import { DEFAULT_CREATE_CARD_VALUE } from '@/schemas/card.schema'
 import { createCardFormAction } from '@/actions/card.action'
 import { useCreateCardDialog } from '@/stores/card.store'
-
-export function RegisterCardDialog() {
+import { useRouter } from 'next/navigation'
+export function RegisterCardDialog(props: ComponentProps<typeof Dialog>) {
     const [state, action] = useActionState(createCardFormAction, {
         fields: DEFAULT_CREATE_CARD_VALUE,
         done: false,
@@ -32,24 +32,26 @@ export function RegisterCardDialog() {
             toggle: state.toggle,
         })),
     )
+    const { push } = useRouter()
 
     useEffect(() => {
         if (state.done) {
             queueMicrotask(() => {
                 toggle(false)
                 refresh()
+                push(`/dashboard/card/${state.lastCardId}`)
             })
         }
-    }, [state.done, refresh, toggle])
+    }, [state.done, refresh, toggle, state, push])
 
     return (
-        <Dialog open={open} onOpenChange={toggle}>
+        <Dialog open={open} onOpenChange={toggle} {...props}>
             <DialogContent className='sm:max-w-sm'>
                 <form action={action}>
                     <DialogHeader>
-                        <DialogTitle>New Charge</DialogTitle>
+                        <DialogTitle>New Card</DialogTitle>
                         <DialogDescription>
-                            Create a new chargue into the credit card.
+                            Registe a new card.
                         </DialogDescription>
                     </DialogHeader>
                     <FieldGroup>
@@ -61,6 +63,9 @@ export function RegisterCardDialog() {
                                 required
                                 defaultValue={state.fields?.name ?? ''}
                             />
+                            {state.fieldErrors?.name?.map((e, i) => (
+                                <FieldError key={i}>{e}</FieldError>
+                            ))}
                         </Field>
                         <Field>
                             <Label htmlFor='bank-1'>Bank</Label>
@@ -69,6 +74,9 @@ export function RegisterCardDialog() {
                                 name='bank'
                                 defaultValue={state.fields?.bank ?? ''}
                             />
+                            {state.fieldErrors?.bank?.map((e, i) => (
+                                <FieldError key={i}>{e}</FieldError>
+                            ))}
                         </Field>
                         <Field>
                             <Label htmlFor='bank-1'>Brand</Label>
@@ -77,6 +85,9 @@ export function RegisterCardDialog() {
                                 name='brand'
                                 defaultValue={state.fields?.brand ?? ''}
                             />
+                            {state.fieldErrors?.brand?.map((e, i) => (
+                                <FieldError key={i}>{e}</FieldError>
+                            ))}
                         </Field>
                         <Field>
                             <Label htmlFor='last-4'>Last 4 Numbers</Label>
@@ -86,6 +97,9 @@ export function RegisterCardDialog() {
                                 type='text'
                                 defaultValue={state.fields?.last4 ?? ''}
                             />
+                            {state.fieldErrors?.last4?.map((e, i) => (
+                                <FieldError key={i}>{e}</FieldError>
+                            ))}
                         </Field>
                         <Field>
                             <Label htmlFor='closing-4'>Closing Day</Label>
@@ -97,6 +111,9 @@ export function RegisterCardDialog() {
                                 max={31}
                                 defaultValue={state.fields?.closing_day ?? ''}
                             />
+                            {state.fieldErrors?.closing_day?.map((e, i) => (
+                                <FieldError key={i}>{e}</FieldError>
+                            ))}
                         </Field>
                         <Field>
                             <Label htmlFor='due-4'>Due Day</Label>
@@ -108,6 +125,9 @@ export function RegisterCardDialog() {
                                 max={31}
                                 defaultValue={state.fields?.due_day ?? ''}
                             />
+                            {state.fieldErrors?.due_day?.map((e, i) => (
+                                <FieldError key={i}>{e}</FieldError>
+                            ))}
                         </Field>
                         <Field>
                             <Label htmlFor='limit-4'>Credit Limit</Label>
@@ -117,6 +137,9 @@ export function RegisterCardDialog() {
                                 type='number'
                                 defaultValue={state.fields?.credit_limit ?? ''}
                             />
+                            {state.fieldErrors?.credit_limit?.map((e, i) => (
+                                <FieldError key={i}>{e}</FieldError>
+                            ))}
                         </Field>
                     </FieldGroup>
                     <DialogFooter>

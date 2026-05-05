@@ -1,27 +1,8 @@
 'use client'
 
-import { getChargesAction } from '@/actions/chargue.action'
-import { Charge } from '@/db/generated/prisma/browser'
+import { getOwnCardsAction } from '@/actions/card.action'
+import { Card } from '@/db/generated/prisma/browser'
 import { create } from 'zustand'
-
-// interface CardState {
-//     total: number
-//     data: Charge[]
-//     setData(data: Charge[]): void
-//     setTotal(total: number): void
-//     refresh(): void
-// }
-// export const useCard = create<CardState>((set) => ({
-//     total: 0,
-//     data: [],
-//     setData: (data) => set({ data }),
-//     setTotal: (total) => set({ total }),
-//     refresh: () => {
-//         getChargesAction().then(({ total, data }) => {
-//             set({ total, data })
-//         })
-//     },
-// }))
 
 interface CreateChargeDialogState {
     open: boolean
@@ -35,5 +16,19 @@ export const useCreateCardDialog = create<CreateChargeDialogState>((set) => ({
         } else {
             set((state) => ({ open: !state.open }))
         }
+    },
+}))
+
+interface CardStore {
+    cards: Omit<Card, 'created_at' | 'updated_at'>[]
+    refresh(): void
+}
+
+export const useCards = create<CardStore>((set) => ({
+    cards: [],
+    refresh: () => {
+        getOwnCardsAction().then((cards) => {
+            set({ cards })
+        })
     },
 }))

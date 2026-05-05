@@ -51,11 +51,7 @@ export async function createChargueFormAction(
         }
     }
 
-    await createChargue({
-        amount: parsed.data.amount,
-        name: parsed.data.name,
-        card_id: '',
-    })
+    await createChargue(parsed.data)
 
     return {
         fields: DEFAULT_CREATE_CHARGE_VALUE,

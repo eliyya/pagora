@@ -8,6 +8,7 @@ export const CreateChargeSchema = z.object({
         })
         .transform((num) => Number(num.toFixed(2)) * 100),
     name: z.string().trim().min(1),
+    card_id: z.string(),
 })
 
 export type CreateCharge = z.infer<typeof CreateChargeSchema>
@@ -15,6 +16,7 @@ export type CreateCharge = z.infer<typeof CreateChargeSchema>
 export const DEFAULT_CREATE_CHARGE_VALUE: CreateCharge = {
     amount: 50,
     name: 'Cafeteria',
+    card_id: '',
 }
 
 export const FormChargeSchema = CreateChargeSchema.extend({
