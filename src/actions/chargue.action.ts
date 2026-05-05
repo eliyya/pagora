@@ -3,7 +3,7 @@
 import { db } from '@/db/prisma'
 import {
     CreateChargeSchema,
-    CreateChargue,
+    CreateCharge,
     DEFAULT_CREATE_CHARGE_VALUE,
 } from '@/schemas/charge'
 import { cacheTag, revalidateTag } from 'next/cache'
@@ -21,7 +21,10 @@ export async function getChargesAction() {
     }
 }
 
-export async function createChargue(data: CreateChargue) {
+interface CreateChargueProps extends CreateCharge {
+    card_id: string
+}
+export async function createChargue(data: CreateChargueProps) {
     const charge = await db.charge.create({
         data,
     })
@@ -30,8 +33,8 @@ export async function createChargue(data: CreateChargue) {
 }
 
 interface CreateChargueState {
-    fields: CreateChargue
-    errors?: ReturnType<typeof z.flattenError<CreateChargue>>['fieldErrors']
+    fields: CreateCharge
+    errors?: ReturnType<typeof z.flattenError<CreateCharge>>['fieldErrors']
     done?: boolean
 }
 export async function createChargueFormAction(

@@ -15,6 +15,7 @@ datasource db {
 model Charge {
   id         String   @id @default(dbgenerated("snowflake()"))
   name       String
+  card_id    String
   /// at int like 13.99 => 1399
   amount     Int
   /// at int like 13.99 => 1399
@@ -22,7 +23,33 @@ model Charge {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
+  card Card @relation(fields: [card_id], references: [id], onDelete: Cascade)
+
   @@map("chargues")
+}
+
+enum CARD_BRAND {
+  mastercard
+  visa
+  amex
+}
+
+model Card {
+  id           String     @id @default(dbgenerated("snowflake()"))
+  name         String
+  owner_id     String
+  last4        String
+  closing_day  Int
+  due_day      Int
+  credit_limit Int
+  bank         String?
+  brand        CARD_BRAND @default(mastercard)
+
+  owner   User     @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  charges Charge[]
+
+  @@unique([owner_id, name])
+  @@map("cards")
 }
 
 model User {
@@ -34,6 +61,7 @@ model User {
 
   sessions Session[]
   accounts Account[]
+  cards    Card[]
 
   @@map("users")
 }
