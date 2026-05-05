@@ -10,7 +10,6 @@ import { Temporal } from 'temporal-polyfill'
 export async function proxy(request: NextRequest) {
     const cookie = request.cookies.get(COOKIES.SESSION)?.value
     const refresh = request.cookies.get(COOKIES.REFRESH)?.value
-    console.log(!!refresh, !!cookie)
 
     if (!cookie) {
         if (!refresh) {
@@ -19,7 +18,6 @@ export async function proxy(request: NextRequest) {
         return await refreshToken(request, refresh)
     }
     const jwtPayload = await jwtVerify(cookie, PUBLIC_KEY).catch(() => null)
-    console.log(!!jwtPayload)
 
     if (!jwtPayload) {
         if (!refresh) {
