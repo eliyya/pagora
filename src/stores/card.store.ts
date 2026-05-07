@@ -28,6 +28,7 @@ interface CardStore {
     refreshCard(): void
     refreshCharges(): Promise<void>
     setCurrentCard(id: string): void
+    paidCharge(id: string): void
 }
 
 export const useCards = create<CardStore>((set, get) => ({
@@ -58,5 +59,19 @@ export const useCards = create<CardStore>((set, get) => ({
         getOwnCardsAction().then((cards) => {
             set({ cards })
         })
+    },
+    paidCharge(id) {
+        set((state) => ({
+            charges: state.charges.map((c) => {
+                if (c.id == id) {
+                    return {
+                        ...c,
+                        paid: c.amount,
+                    }
+                } else {
+                    return c
+                }
+            }),
+        }))
     },
 }))

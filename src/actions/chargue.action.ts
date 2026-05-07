@@ -67,3 +67,41 @@ export async function createChargueFormAction(
         done: charge,
     }
 }
+
+export async function paidChargeAction(id: string) {
+    const user = await getCurrentUserAction()
+    if (!user) {
+        return {
+            error: 'unauthorized' as const,
+        }
+    }
+    const charge = await db.charge.findFirst({
+        where: {
+            id,
+            card: {
+                owner_id: user.id,
+            },
+        },
+    })
+    if (!charge) {
+        return {
+            error: 'not found' as const,
+        }
+    }
+    try {
+        console.log('id', id)
+
+        const newCharge = await db.charge.update({
+            where: { id },
+            data: { paid: charge.amount },
+        })
+        return {
+            data: newCharge,
+        }
+    } catch (error) {
+        console.log(error)
+        return {
+            error: `${error}`,
+        }
+    }
+}
