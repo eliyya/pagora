@@ -8,8 +8,8 @@ import {
 import { revalidateTag } from 'next/cache'
 import { z } from 'zod'
 import { getCurrentUserAction } from './users.actionl'
+import { Card } from '@/db/generated/prisma/browser'
 
-// interface CreateChargueProps extends CreateCard {}
 export async function createCardAction({
     brand,
     closing_day,
@@ -40,7 +40,7 @@ interface CreateChargueState {
     fields: CreateCard
     fieldErrors?: ReturnType<typeof z.flattenError<CreateCard>>['fieldErrors']
     formErrors?: string[]
-    done?: boolean
+    done?: Card
     lastCardId?: string
 }
 export async function createCardFormAction(
@@ -51,7 +51,6 @@ export async function createCardFormAction(
     if (!user) {
         return {
             fields: state.fields,
-            done: false,
             formErrors: ['User not found'],
         }
     }
@@ -73,7 +72,7 @@ export async function createCardFormAction(
 
     return {
         fields: DEFAULT_CREATE_CARD_VALUE,
-        done: true,
+        done: newCard,
         lastCardId: newCard.id,
     }
 }
