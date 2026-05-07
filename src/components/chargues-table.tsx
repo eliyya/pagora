@@ -152,7 +152,6 @@ export function ChargesTable() {
 export function DialogDemo() {
     const [state, action] = useActionState(createChargueFormAction, {
         fields: DEFAULT_CREATE_CHARGE_VALUE,
-        done: false,
     })
 
     const { refresh } = useCards(
@@ -168,13 +167,13 @@ export function DialogDemo() {
     )
 
     useEffect(() => {
-        if (state.done) {
+        if (state.done?.id) {
             queueMicrotask(() => {
                 toggle(false)
                 refresh()
             })
         }
-    }, [state.done, refresh, toggle])
+    }, [state.done?.id, refresh, toggle])
 
     return (
         <Dialog open={open} onOpenChange={toggle}>
