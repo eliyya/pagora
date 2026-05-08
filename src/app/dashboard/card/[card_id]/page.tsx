@@ -2,7 +2,6 @@ import { ChartAreaInteractive } from '@/components/chart-area-interactive'
 import { ChargesTable } from '@/components/data-table'
 import { SectionCards } from '@/components/section-cards'
 
-import data from '../../data.json'
 import { Suspense } from 'react'
 import { RegisterCardDialog } from '@/components/register-card-dialog'
 import { DashboardMainLayout } from '@/components/dashboard-main-layout'
@@ -22,9 +21,9 @@ export default async function Page({
 
 async function Cached({
     params,
-}: {
+}: Readonly<{
     params: PageProps<'/dashboard/card/[card_id]'>['params']
-}) {
+}>) {
     const { card_id } = await params
     const user = await getCurrentUserAction()
     if (!user) {
@@ -44,7 +43,7 @@ async function Cached({
                 <ChartAreaInteractive />
             </div>
             <Suspense>
-                <ChargesTable data={data} />
+                <ChargesTable />
             </Suspense>
             <RegisterCardDialog />
         </DashboardMainLayout>

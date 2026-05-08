@@ -8,6 +8,7 @@ import {
 } from '@/schemas/charge'
 import z from 'zod'
 import { getCurrentUserAction } from './users.actionl'
+import { Charge } from '@/db/generated/prisma/browser'
 
 interface GetChargesActionProps {
     card_id: string
@@ -43,7 +44,7 @@ export async function createChargue(data: CreateChargueProps) {
 interface CreateChargueState {
     fields: CreateCharge
     errors?: ReturnType<typeof z.flattenError<CreateCharge>>['fieldErrors']
-    done?: boolean
+    done?: Charge
 }
 export async function createChargueFormAction(
     state: CreateChargueState,
@@ -59,10 +60,48 @@ export async function createChargueFormAction(
         }
     }
 
-    await createChargue(parsed.data)
+    const charge = await createChargue(parsed.data)
 
     return {
         fields: DEFAULT_CREATE_CHARGE_VALUE,
-        done: true,
+        done: charge,
+    }
+}
+
+export async function paidChargeAction(id: string) {
+    const user = await getCurrentUserAction()
+    if (!user) {
+        return {
+            error: 'unauthorized' as const,
+        }
+    }
+    const charge = await db.charge.findFirst({
+        where: {
+            id,
+            card: {
+                owner_id: user.id,
+            },
+        },
+    })
+    if (!charge) {
+        return {
+            error: 'not found' as const,
+        }
+    }
+    try {
+        console.log('id', id)
+
+        const newCharge = await db.charge.update({
+            where: { id },
+            data: { paid: charge.amount },
+        })
+        return {
+            data: newCharge,
+        }
+    } catch (error) {
+        console.log(error)
+        return {
+            error: `${error}`,
+        }
     }
 }

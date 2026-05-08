@@ -19,10 +19,11 @@ import { DEFAULT_CREATE_CARD_VALUE } from '@/schemas/card.schema'
 import { createCardFormAction } from '@/actions/card.action'
 import { useCreateCardDialog } from '@/stores/card.store'
 import { useRouter } from 'next/navigation'
-export function RegisterCardDialog(props: ComponentProps<typeof Dialog>) {
+export function RegisterCardDialog(
+    props: Readonly<ComponentProps<typeof Dialog>>,
+) {
     const [state, action] = useActionState(createCardFormAction, {
         fields: DEFAULT_CREATE_CARD_VALUE,
-        done: false,
     })
     const { open, toggle } = useCreateCardDialog(
         useShallow((state) => ({
@@ -33,13 +34,13 @@ export function RegisterCardDialog(props: ComponentProps<typeof Dialog>) {
     const { push } = useRouter()
 
     useEffect(() => {
-        if (state.done) {
+        if (state.done?.id) {
             queueMicrotask(() => {
                 toggle(false)
                 push(`/dashboard/card/${state.lastCardId}`)
             })
         }
-    }, [state.done, toggle, state, push])
+    }, [state.done?.id, toggle, state, push])
 
     return (
         <Dialog open={open} onOpenChange={toggle} {...props}>
@@ -60,8 +61,8 @@ export function RegisterCardDialog(props: ComponentProps<typeof Dialog>) {
                                 required
                                 defaultValue={state.fields?.name ?? ''}
                             />
-                            {state.fieldErrors?.name?.map((e, i) => (
-                                <FieldError key={i}>{e}</FieldError>
+                            {state.fieldErrors?.name?.map((e) => (
+                                <FieldError key={e}>{e}</FieldError>
                             ))}
                         </Field>
                         <Field>
@@ -71,8 +72,8 @@ export function RegisterCardDialog(props: ComponentProps<typeof Dialog>) {
                                 name='bank'
                                 defaultValue={state.fields?.bank ?? ''}
                             />
-                            {state.fieldErrors?.bank?.map((e, i) => (
-                                <FieldError key={i}>{e}</FieldError>
+                            {state.fieldErrors?.bank?.map((e) => (
+                                <FieldError key={e}>{e}</FieldError>
                             ))}
                         </Field>
                         <Field>
@@ -82,8 +83,8 @@ export function RegisterCardDialog(props: ComponentProps<typeof Dialog>) {
                                 name='brand'
                                 defaultValue={state.fields?.brand ?? ''}
                             />
-                            {state.fieldErrors?.brand?.map((e, i) => (
-                                <FieldError key={i}>{e}</FieldError>
+                            {state.fieldErrors?.brand?.map((e) => (
+                                <FieldError key={e}>{e}</FieldError>
                             ))}
                         </Field>
                         <Field>
@@ -94,8 +95,8 @@ export function RegisterCardDialog(props: ComponentProps<typeof Dialog>) {
                                 type='text'
                                 defaultValue={state.fields?.last4 ?? ''}
                             />
-                            {state.fieldErrors?.last4?.map((e, i) => (
-                                <FieldError key={i}>{e}</FieldError>
+                            {state.fieldErrors?.last4?.map((e) => (
+                                <FieldError key={e}>{e}</FieldError>
                             ))}
                         </Field>
                         <Field>
@@ -108,8 +109,8 @@ export function RegisterCardDialog(props: ComponentProps<typeof Dialog>) {
                                 max={31}
                                 defaultValue={state.fields?.closing_day ?? ''}
                             />
-                            {state.fieldErrors?.closing_day?.map((e, i) => (
-                                <FieldError key={i}>{e}</FieldError>
+                            {state.fieldErrors?.closing_day?.map((e) => (
+                                <FieldError key={e}>{e}</FieldError>
                             ))}
                         </Field>
                         <Field>
@@ -122,8 +123,8 @@ export function RegisterCardDialog(props: ComponentProps<typeof Dialog>) {
                                 max={31}
                                 defaultValue={state.fields?.due_day ?? ''}
                             />
-                            {state.fieldErrors?.due_day?.map((e, i) => (
-                                <FieldError key={i}>{e}</FieldError>
+                            {state.fieldErrors?.due_day?.map((e) => (
+                                <FieldError key={e}>{e}</FieldError>
                             ))}
                         </Field>
                         <Field>
@@ -134,8 +135,8 @@ export function RegisterCardDialog(props: ComponentProps<typeof Dialog>) {
                                 type='number'
                                 defaultValue={state.fields?.credit_limit ?? ''}
                             />
-                            {state.fieldErrors?.credit_limit?.map((e, i) => (
-                                <FieldError key={i}>{e}</FieldError>
+                            {state.fieldErrors?.credit_limit?.map((e) => (
+                                <FieldError key={e}>{e}</FieldError>
                             ))}
                         </Field>
                     </FieldGroup>

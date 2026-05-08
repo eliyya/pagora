@@ -25,7 +25,6 @@ export function CreateChargeDialog() {
     const params = useParams<{ card_id: string }>()
     const [state, action] = useActionState(createChargueFormAction, {
         fields: DEFAULT_CREATE_CHARGE_VALUE,
-        done: false,
     })
     const refresh = useCards(useShallow((state) => state.refreshCharges))
     const { open, toggle } = useCreateDialogState(
@@ -36,13 +35,13 @@ export function CreateChargeDialog() {
     )
 
     useEffect(() => {
-        if (state.done) {
+        if (state.done?.id) {
             queueMicrotask(() => {
                 toggle(false)
                 refresh()
             })
         }
-    }, [state.done, refresh, toggle])
+    }, [state.done?.id, refresh, toggle])
 
     return (
         <Dialog open={open} onOpenChange={toggle}>
@@ -62,8 +61,8 @@ export function CreateChargeDialog() {
                                 name='name'
                                 defaultValue={state.fields?.name ?? ''}
                             />
-                            {state.errors?.name?.map((e, i) => (
-                                <FieldError key={i}>{e}</FieldError>
+                            {state.errors?.name?.map((e) => (
+                                <FieldError key={e}>{e}</FieldError>
                             ))}
                         </Field>
                         <Field>
@@ -76,8 +75,8 @@ export function CreateChargeDialog() {
                                 min={0}
                                 defaultValue={state.fields?.amount ?? ''}
                             />
-                            {state.errors?.amount?.map((e, i) => (
-                                <FieldError key={i}>{e}</FieldError>
+                            {state.errors?.amount?.map((e) => (
+                                <FieldError key={e}>{e}</FieldError>
                             ))}
                         </Field>
                     </FieldGroup>
