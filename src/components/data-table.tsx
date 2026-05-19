@@ -84,6 +84,7 @@ import { startTransition, useId, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { useCards } from '@/stores/card.store'
 import { paidChargeAction } from '@/actions/chargue.action'
+import { ChartAreaInteractive } from './chart-area-interactive'
 
 export const schema = z.object({
     id: z.number(),
@@ -365,7 +366,7 @@ export function ChargesTable() {
     const [sorting, setSorting] = useState<SortingState>([])
     const [pagination, setPagination] = useState({
         pageIndex: 0,
-        pageSize: 10,
+        pageSize: 20,
     })
     const sortableId = useId()
     const sensors = useSensors(
@@ -466,10 +467,9 @@ export function ChargesTable() {
                         className='max-w-sm'
                     />
                     <TabsList className='hidden **:data-[slot=badge]:size-5 **:data-[slot=badge]:rounded-full **:data-[slot=badge]:bg-muted-foreground/30 **:data-[slot=badge]:px-1 @4xl/main:flex'>
-                        <TabsTrigger value='outline'>Outline</TabsTrigger>
+                        <TabsTrigger value='outline'>Chargues</TabsTrigger>
                         <TabsTrigger value='past-performance'>
-                            Past Performance{' '}
-                            <Badge variant='secondary'>3</Badge>
+                            Graph
                         </TabsTrigger>
                         <TabsTrigger value='key-personnel'>
                             Key Personnel <Badge variant='secondary'>2</Badge>
@@ -617,7 +617,7 @@ export function ChargesTable() {
                                     onValueChange={(value) => {
                                         table.setPageSize(Number(value))
                                     }}
-                                    items={[10, 20, 30, 40, 50].map(
+                                    items={[20, 30, 40, 50, 100].map(
                                         (pageSize) => ({
                                             label: `${pageSize}`,
                                             value: `${pageSize}`,
@@ -638,7 +638,7 @@ export function ChargesTable() {
                                     </SelectTrigger>
                                     <SelectContent side='top'>
                                         <SelectGroup>
-                                            {[10, 20, 30, 40, 50].map(
+                                            {[20, 30, 40, 50, 100].map(
                                                 (pageSize) => (
                                                     <SelectItem
                                                         key={pageSize}
@@ -716,7 +716,7 @@ export function ChargesTable() {
                     value='past-performance'
                     className='flex flex-col px-4 lg:px-6'
                 >
-                    <div className='aspect-video w-full flex-1 rounded-lg border border-dashed'></div>
+                    <ChartAreaInteractive />
                 </TabsContent>
                 <TabsContent
                     value='key-personnel'

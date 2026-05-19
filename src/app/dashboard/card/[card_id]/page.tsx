@@ -39,9 +39,6 @@ async function Cached({
     return (
         <DashboardMainLayout title={card.name}>
             <SectionCards />
-            <div className='px-4 lg:px-6'>
-                <ChartAreaInteractive />
-            </div>
             <Suspense>
                 <ChargesTable />
             </Suspense>
