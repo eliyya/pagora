@@ -80,9 +80,11 @@ import { DataTableColumnHeader } from './data-table-column-header'
 import { useCreateDialogState } from '@/stores/charges.store'
 import { Charge } from '@/db/generated/prisma/browser'
 import { CreateChargeDialog } from './create-charge-dialog'
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useInfo } from '@/stores/info.store'
 import { ChartAreaInteractive } from './chart-area-interactive'
+import { useParams } from 'next/navigation'
+import { useShallow } from 'zustand/shallow'
 
 export const schema = z.object({
     id: z.number(),
@@ -341,7 +343,12 @@ function DraggableRow({ row }: Readonly<{ row: Row<Charge> }>) {
 }
 export function ChargesTable() {
     const openCreateDialog = useCreateDialogState((s) => s.toggle)
-    const data = useInfo((s) => s.charges)
+    const { data, fetch } = useInfo(
+        useShallow((s) => ({
+            data: s.charges,
+            fetch: s.fetch,
+        })),
+    )
     const rowCount = data.length
     const [rowSelection, setRowSelection] = useState({})
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
@@ -363,6 +370,12 @@ export function ChargesTable() {
         () => data?.map(({ id }) => id) || [],
         [data],
     )
+    const { card_id } = useParams<{ card_id: string }>()
+    useEffect(() => {
+        if (card_id) {
+            fetch(card_id)
+        }
+    }, [card_id, fetch])
 
     // eslint-disable-next-line react-hooks/incompatible-library
     const table = useReactTable({
