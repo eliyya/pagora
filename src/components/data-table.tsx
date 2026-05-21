@@ -81,8 +81,6 @@ import { useCreateDialogState } from '@/stores/charges.store'
 import { Charge } from '@/db/generated/prisma/browser'
 import { CreateChargeDialog } from './create-charge-dialog'
 import { useId, useMemo, useState } from 'react'
-import { useShallow } from 'zustand/shallow'
-import { useCards } from '@/stores/card.store'
 import { useInfo } from '@/stores/info.store'
 import { ChartAreaInteractive } from './chart-area-interactive'
 
@@ -343,12 +341,8 @@ function DraggableRow({ row }: Readonly<{ row: Row<Charge> }>) {
 }
 export function ChargesTable() {
     const openCreateDialog = useCreateDialogState((s) => s.toggle)
-    const { rowCount, data } = useCards(
-        useShallow((s) => ({
-            rowCount: s.chargesCount,
-            data: s.charges,
-        })),
-    )
+    const data = useInfo((s) => s.charges)
+    const rowCount = data.length
     const [rowSelection, setRowSelection] = useState({})
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
         {},
