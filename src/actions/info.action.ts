@@ -12,10 +12,10 @@ function buildDailySummary(charges: Charge[]): DailySummary[] {
         const date = c.created_at.toISOString().slice(0, 10)
         map.set(date, (map.get(date) ?? 0) + c.amount)
     }
-    return Array.from(map, ([date, charges]) => ({
+    return Array.from(map, ([date, totalCents]) => ({
         date,
         payments: 0,
-        charges,
+        charges: totalCents / 100,
     }))
 }
 

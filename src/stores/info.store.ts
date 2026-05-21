@@ -47,10 +47,10 @@ export const useInfo = create<InfoStore>((set, get) => ({
             const date = c.created_at.toISOString().slice(0, 10)
             map.set(date, (map.get(date) ?? 0) + c.amount)
         }
-        const summary = Array.from(map, ([date, total]) => ({
+        const summary = Array.from(map, ([date, totalCents]) => ({
             date,
             payments: 0,
-            charges: total,
+            charges: totalCents / 100,
         }))
         set({ charges, summary })
     },
