@@ -9,12 +9,12 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card'
-import { useCards } from '@/stores/card.store'
+import { useInfo } from '@/stores/info.store'
 import { TrendingUpIcon, TrendingDownIcon } from 'lucide-react'
 import { useShallow } from 'zustand/shallow'
 
 export function SectionCards() {
-    const chargues = useCards(useShallow((s) => s.charges))
+    const chargues = useInfo(useShallow((s) => s.charges))
     const total = chargues.reduce((a, b) => a + (b.amount - b.paid), 0)
     return (
         <div className='grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-linear-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4 dark:*:data-[slot=card]:bg-card'>

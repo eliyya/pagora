@@ -16,27 +16,26 @@ import {
     SidebarMenuSubButton,
     SidebarMenuSubItem,
 } from '@/components/ui/sidebar'
-import { useCards, useCreateCardDialog } from '@/stores/card.store'
+import { useCreateCardDialog } from '@/stores/card.store'
 import { useShallow } from 'zustand/shallow'
 import { useEffect } from 'react'
 import { useParams } from 'next/navigation'
+import { useInfo } from '@/stores/info.store'
 
 export function NavMain() {
     const openDialog = useCreateCardDialog((s) => s.toggle)
-    const { cards, refresh, selectCard } = useCards(
+    const { cards, fetch } = useInfo(
         useShallow((s) => ({
             cards: s.cards,
-            refresh: s.refreshCard,
-            selectCard: s.setCurrentCard,
+            fetch: s.fetch,
         })),
     )
     const { card_id } = useParams<{ card_id: string }>()
     useEffect(() => {
-        refresh()
         if (card_id) {
-            selectCard(card_id)
+            fetch(card_id)
         }
-    }, [card_id, refresh, selectCard])
+    }, [card_id, fetch])
     return (
         <SidebarGroup>
             <SidebarGroupLabel>Cards</SidebarGroupLabel>
