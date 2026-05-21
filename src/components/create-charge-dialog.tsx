@@ -13,40 +13,46 @@ import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useActionState, useEffect } from 'react'
-import { createChargueFormAction } from '@/actions/chargue.action'
-import { DEFAULT_CREATE_CHARGE_VALUE } from '@/schemas/charge'
+import { FormEvent, useRef, useState } from 'react'
 import { useCreateDialogState } from '@/stores/charges.store'
 import { useShallow } from 'zustand/shallow'
-import { useParams } from 'next/navigation'
-import { useCards } from '@/stores/card.store'
+import { useInfo } from '@/stores/info.store'
 
 export function CreateChargeDialog() {
-    const params = useParams<{ card_id: string }>()
-    const [state, action] = useActionState(createChargueFormAction, {
-        fields: DEFAULT_CREATE_CHARGE_VALUE,
-    })
-    const refresh = useCards(useShallow((state) => state.refreshCharges))
     const { open, toggle } = useCreateDialogState(
         useShallow((state) => ({
             open: state.open,
             toggle: state.toggle,
         })),
     )
+    const createCharge = useInfo((s) => s.createCharge)
+    const formRef = useRef<HTMLFormElement>(null)
+    const [errors, setErrors] = useState<{ name?: string; amount?: string }>({})
 
-    useEffect(() => {
-        if (state.done?.id) {
-            queueMicrotask(() => {
-                toggle(false)
-                refresh()
-            })
-        }
-    }, [state.done?.id, refresh, toggle])
+    async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+        e.preventDefault()
+        const form = new FormData(e.currentTarget)
+        const name = (form.get('name') as string)?.trim()
+        const rawAmount = form.get('amount') as string
+        const parsed = parseFloat(rawAmount)
+
+        const newErrors: typeof errors = {}
+        if (!name) newErrors.name = 'Name is required'
+        if (isNaN(parsed) || parsed <= 0) newErrors.amount = 'Invalid amount'
+        setErrors(newErrors)
+        if (Object.keys(newErrors).length > 0) return
+
+        const amount = Math.round(parsed * 100)
+        await createCharge(amount, name)
+        formRef.current?.reset()
+        setErrors({})
+        toggle(false)
+    }
 
     return (
         <Dialog open={open} onOpenChange={toggle}>
             <DialogContent className='sm:max-w-sm'>
-                <form action={action}>
+                <form ref={formRef} onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle>New Charge</DialogTitle>
                         <DialogDescription>
@@ -56,14 +62,10 @@ export function CreateChargeDialog() {
                     <FieldGroup>
                         <Field>
                             <Label htmlFor='name-1'>Name</Label>
-                            <Input
-                                id='name-1'
-                                name='name'
-                                defaultValue={state.fields?.name ?? ''}
-                            />
-                            {state.errors?.name?.map((e) => (
-                                <FieldError key={e}>{e}</FieldError>
-                            ))}
+                            <Input id='name-1' name='name' />
+                            {errors.name && (
+                                <FieldError>{errors.name}</FieldError>
+                            )}
                         </Field>
                         <Field>
                             <Label htmlFor='username-1'>Amount</Label>
@@ -73,18 +75,12 @@ export function CreateChargeDialog() {
                                 type='number'
                                 step='0.01'
                                 min={0}
-                                defaultValue={state.fields?.amount ?? ''}
                             />
-                            {state.errors?.amount?.map((e) => (
-                                <FieldError key={e}>{e}</FieldError>
-                            ))}
+                            {errors.amount && (
+                                <FieldError>{errors.amount}</FieldError>
+                            )}
                         </Field>
                     </FieldGroup>
-                    <input
-                        type='hidden'
-                        name='card_id'
-                        value={params.card_id}
-                    />
                     <DialogFooter>
                         <DialogClose
                             render={<Button variant='outline'>Cancel</Button>}
