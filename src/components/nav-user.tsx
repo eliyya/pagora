@@ -16,7 +16,7 @@ import {
     SidebarMenuItem,
     useSidebar,
 } from '@/components/ui/sidebar'
-import { useUser } from '@/stores/user.store'
+import { useInfo } from '@/stores/info.store'
 import {
     EllipsisVerticalIcon,
     CircleUserRoundIcon,
@@ -24,23 +24,19 @@ import {
     BellIcon,
     LogOutIcon,
 } from 'lucide-react'
-import { useEffect } from 'react'
 import { useShallow } from 'zustand/shallow'
 
 export function NavUser() {
     const { isMobile } = useSidebar()
-    const user = useUser(
+    const { user } = useInfo(
         useShallow((state) => ({
-            name: state.username,
-            email: state.email,
-            avatar: state.avatar,
+            user: state.user,
         })),
     )
-    const fetch = useUser(useShallow((state) => state.fetch))
 
-    useEffect(() => {
-        fetch()
-    }, [fetch])
+    const displayName = user?.username ?? 'User'
+    const displayEmail = user?.email ?? ''
+    const initials = displayName.charAt(0).toUpperCase()
 
     return (
         <SidebarMenu>
@@ -56,19 +52,19 @@ export function NavUser() {
                     >
                         <Avatar className='size-8 rounded-lg grayscale'>
                             <AvatarImage
-                                src={user.avatar ?? '/avatars/shadcn.jpg'}
-                                alt={user.name}
+                                src='/avatars/shadcn.jpg'
+                                alt={displayName}
                             />
                             <AvatarFallback className='rounded-lg'>
-                                CN
+                                {initials}
                             </AvatarFallback>
                         </Avatar>
                         <div className='grid flex-1 text-left text-sm leading-tight'>
                             <span className='truncate font-medium'>
-                                {user.name}
+                                {displayName}
                             </span>
                             <span className='truncate text-xs text-foreground/70'>
-                                {user.email}
+                                {displayEmail}
                             </span>
                         </div>
                         <EllipsisVerticalIcon className='ml-auto size-4' />
@@ -84,19 +80,19 @@ export function NavUser() {
                                 <div className='flex items-center gap-2 px-1 py-1.5 text-left text-sm'>
                                     <Avatar className='size-8'>
                                         <AvatarImage
-                                            src={user.avatar}
-                                            alt={user.name}
+                                            src='/avatars/shadcn.jpg'
+                                            alt={displayName}
                                         />
                                         <AvatarFallback className='rounded-lg'>
-                                            CN
+                                            {initials}
                                         </AvatarFallback>
                                     </Avatar>
                                     <div className='grid flex-1 text-left text-sm leading-tight'>
                                         <span className='truncate font-medium'>
-                                            {user.name}
+                                            {displayName}
                                         </span>
                                         <span className='truncate text-xs text-muted-foreground'>
-                                            {user.email}
+                                            {displayEmail}
                                         </span>
                                     </div>
                                 </div>
