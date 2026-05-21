@@ -1,7 +1,7 @@
 'use client'
 
 import { fetchInfoAction } from '@/actions/info.action'
-import { createChargue } from '@/actions/chargue.action'
+import { createChargue, paidChargeAction } from '@/actions/chargue.action'
 import { Card, Charge, User } from '@/db/generated/prisma/browser'
 import { create } from 'zustand'
 
@@ -15,6 +15,7 @@ interface InfoStore {
     summary: DailySummary[]
     fetch(card_id: string): void
     createCharge(amount: number, name: string): Promise<void>
+    paidCharge(id: string): Promise<void>
 }
 
 export const useInfo = create<InfoStore>((set, get) => ({
@@ -51,5 +52,12 @@ export const useInfo = create<InfoStore>((set, get) => ({
             charges: total,
         }))
         set({ charges, summary })
+    },
+    paidCharge: async (id) => {
+        const res = await paidChargeAction(id)
+        if (!res.data) return
+        const paid = res.data
+        const charges = get().charges.map((c) => (c.id === paid.id ? { ...c, paid: paid.paid } : c))
+        set({ charges })
     },
 }))

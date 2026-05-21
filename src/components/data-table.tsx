@@ -80,10 +80,10 @@ import { DataTableColumnHeader } from './data-table-column-header'
 import { useCreateDialogState } from '@/stores/charges.store'
 import { Charge } from '@/db/generated/prisma/browser'
 import { CreateChargeDialog } from './create-charge-dialog'
-import { startTransition, useId, useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { useCards } from '@/stores/card.store'
-import { paidChargeAction } from '@/actions/chargue.action'
+import { useInfo } from '@/stores/info.store'
 import { ChartAreaInteractive } from './chart-area-interactive'
 
 export const schema = z.object({
@@ -301,16 +301,7 @@ const columns: ColumnDef<Charge>[] = [
                     <DropdownMenuContent align='end' className='w-32'>
                         <DropdownMenuItem
                             onClick={() => {
-                                startTransition(async () => {
-                                    const response = await paidChargeAction(
-                                        row.original.id,
-                                    )
-                                    if (response.data) {
-                                        useCards
-                                            .getState()
-                                            .paidCharge(response.data.id)
-                                    }
-                                })
+                                useInfo.getState().paidCharge(row.original.id)
                             }}
                         >
                             Marks as paided
