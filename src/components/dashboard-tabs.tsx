@@ -43,11 +43,15 @@ export function DashboardTabs({
 }) {
     const table = useTableContext()
     const [payOpen, setPayOpen] = useState(false)
+    const [tab, setTab] = useState('charges')
 
     return (
         <div>
             <Tabs
-                defaultValue='charges'
+                value={tab}
+                onValueChange={(value) => {
+                    if (value !== null) setTab(value)
+                }}
                 className='w-full flex-col justify-start gap-6'
             >
                 <div className='flex items-center justify-between px-4 lg:px-6'>
@@ -55,7 +59,10 @@ export function DashboardTabs({
                         View
                     </Label>
                     <Select
-                        defaultValue='charges'
+                        value={tab}
+                        onValueChange={(value) => {
+                            if (value !== null) setTab(value)
+                        }}
                         items={[
                             { label: 'Charges', value: 'charges' },
                             { label: 'Graph', value: 'graph' },
