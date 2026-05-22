@@ -10,31 +10,20 @@ import z from 'zod'
 import { getCurrentUserAction } from './users.actionl'
 import { Charge } from '@/db/generated/prisma/browser'
 
-interface GetChargesActionProps {
-    card_id: string
-}
-export async function getChargesAction({ card_id }: GetChargesActionProps) {
-    const user = await getCurrentUserAction()
-    if (!user) {
-        return {
-            total: 0,
-            data: [],
-        }
-    }
-    const count = await db.charge.count()
-    const chargues = await db.charge.findMany({
-        where: { card_id },
-    })
-    return {
-        total: count,
-        data: chargues,
-    }
-}
-
 interface CreateChargueProps extends CreateCharge {
     card_id: string
 }
 export async function createChargue(data: CreateChargueProps) {
+    const user = await getCurrentUserAction()
+    if (!user) {
+        throw new Error('unauthorized')
+    }
+    const card = await db.card.findFirst({
+        where: { id: data.card_id, owner_id: user.id },
+    })
+    if (!card) {
+        throw new Error('card not found')
+    }
     const charge = await db.charge.create({
         data,
     })
