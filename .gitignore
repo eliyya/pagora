@@ -44,3 +44,4 @@ src/db/generated
 
 #docker
 /docker-compose.yaml
+.env*.local

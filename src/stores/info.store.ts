@@ -1,7 +1,7 @@
 'use client'
 
 import { fetchInfoAction } from '@/actions/info.action'
-import { createChargue, paidChargeAction } from '@/actions/chargue.action'
+import { createChargue, paidChargeAction, batchPayChargesAction } from '@/actions/chargue.action'
 import { Card, Charge, User } from '@/db/generated/prisma/browser'
 import { create } from 'zustand'
 
@@ -16,6 +16,7 @@ interface InfoStore {
     fetch(card_id: string): void
     createCharge(amount: number, name: string): Promise<void>
     paidCharge(id: string): Promise<void>
+    batchPayCharges(amount: number): Promise<void>
 }
 
 export const useInfo = create<InfoStore>((set, get) => ({
@@ -46,10 +47,10 @@ export const useInfo = create<InfoStore>((set, get) => ({
             const date = c.created_at.toISOString().slice(0, 10)
             map.set(date, (map.get(date) ?? 0) + c.amount)
         }
-        const summary = Array.from(map, ([date, total]) => ({
+        const summary = Array.from(map, ([date, totalCents]) => ({
             date,
             payments: 0,
-            charges: total,
+            charges: totalCents / 100,
         }))
         set({ charges, summary })
     },
@@ -58,6 +59,15 @@ export const useInfo = create<InfoStore>((set, get) => ({
         if (!res.data) return
         const paid = res.data
         const charges = get().charges.map((c) => (c.id === paid.id ? { ...c, paid: paid.paid } : c))
+        set({ charges })
+    },
+    batchPayCharges: async (amount) => {
+        const card_id = get().card?.id
+        if (!card_id || amount <= 0) return
+        const res = await batchPayChargesAction(card_id, amount)
+        if (!res.data) return
+        const map = new Map(res.data.map((c) => [c.id, c]))
+        const charges = get().charges.map((c) => map.get(c.id) ?? c)
         set({ charges })
     },
 }))

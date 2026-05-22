@@ -18,24 +18,16 @@ import {
 } from '@/components/ui/sidebar'
 import { useCreateCardDialog } from '@/stores/card.store'
 import { useShallow } from 'zustand/shallow'
-import { useEffect } from 'react'
-import { useParams } from 'next/navigation'
 import { useInfo } from '@/stores/info.store'
 
 export function NavMain() {
     const openDialog = useCreateCardDialog((s) => s.toggle)
-    const { cards, fetch } = useInfo(
+    const { cards } = useInfo(
         useShallow((s) => ({
             cards: s.cards,
-            fetch: s.fetch,
         })),
     )
-    const { card_id } = useParams<{ card_id: string }>()
-    useEffect(() => {
-        if (card_id) {
-            fetch(card_id)
-        }
-    }, [card_id, fetch])
+
     return (
         <SidebarGroup>
             <SidebarGroupLabel>Cards</SidebarGroupLabel>

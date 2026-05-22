@@ -68,6 +68,32 @@ export async function createChargueFormAction(
     }
 }
 
+export async function batchPayChargesAction(card_id: string, amount: number) {
+    const user = await getCurrentUserAction()
+    if (!user) {
+        return { error: 'unauthorized' as const }
+    }
+    const all = await db.charge.findMany({
+        where: { card_id },
+        orderBy: { created_at: 'asc' },
+    })
+    const updated: Charge[] = []
+    let remaining = amount
+    for (const charge of all) {
+        if (remaining <= 0) break
+        const owed = charge.amount - charge.paid
+        if (owed <= 0) continue
+        const pay = Math.min(owed, remaining)
+        remaining -= pay
+        const newCharge = await db.charge.update({
+            where: { id: charge.id },
+            data: { paid: charge.paid + pay },
+        })
+        updated.push(newCharge)
+    }
+    return { data: updated }
+}
+
 export async function paidChargeAction(id: string) {
     const user = await getCurrentUserAction()
     if (!user) {
