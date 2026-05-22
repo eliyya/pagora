@@ -120,55 +120,62 @@ async function getOrCreateAccount({
     access_token,
     refresh_token,
 }: CreateAccountProps) {
-    const user = await db.user.findFirst({
+    const existing = await db.account.findFirst({
         where: {
-            accounts: {
-                some: {
-                    provider_acccount_id,
-                    provider: PROVIDERS.discord,
-                },
-            },
+            provider_acccount_id,
+            provider: PROVIDERS.discord,
         },
+        include: { user: true },
     })
-    if (!user) {
-        const nuser = await db.user.findFirst({
-            where: { email },
-            include: { accounts: true },
+    if (existing) {
+        await db.account.update({
+            where: { id: existing.id },
+            data: {
+                email,
+                access_token: encrypt(access_token),
+                refresh_token: encrypt(refresh_token),
+            },
         })
-        if (!nuser) {
-            return await db.user.create({
-                data: {
-                    email,
-                    username,
-                    accounts: {
-                        create: {
-                            email,
-                            provider: PROVIDERS.discord,
-                            provider_acccount_id,
-                            access_token: encrypt(access_token),
-                            refresh_token: encrypt(refresh_token),
-                        },
-                    },
-                },
-                include: {
-                    accounts: true,
-                },
+        if (existing.user.email !== email) {
+            await db.user.update({
+                where: { id: existing.user.id },
+                data: { email },
             })
         }
-        const account = await db.account.create({
+        return existing.user
+    }
+    const byEmail = await db.user.findFirst({
+        where: { email },
+    })
+    if (byEmail) {
+        await db.account.create({
             data: {
                 email,
                 provider: PROVIDERS.discord,
                 provider_acccount_id,
                 access_token: encrypt(access_token),
                 refresh_token: encrypt(refresh_token),
-                user_id: nuser.id,
+                user_id: byEmail.id,
             },
         })
-        nuser.accounts.push(account)
-        return nuser
+        return byEmail
     }
-    return user
+    return await db.user.create({
+        data: {
+            email,
+            username,
+            accounts: {
+                create: {
+                    email,
+                    provider: PROVIDERS.discord,
+                    provider_acccount_id,
+                    access_token: encrypt(access_token),
+                    refresh_token: encrypt(refresh_token),
+                },
+            },
+        },
+        include: { accounts: true },
+    })
 }
 
 async function getDiscordData(token: string) {

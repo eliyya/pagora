@@ -14,6 +14,16 @@ interface CreateChargueProps extends CreateCharge {
     card_id: string
 }
 export async function createChargue(data: CreateChargueProps) {
+    const user = await getCurrentUserAction()
+    if (!user) {
+        throw new Error('unauthorized')
+    }
+    const card = await db.card.findFirst({
+        where: { id: data.card_id, owner_id: user.id },
+    })
+    if (!card) {
+        throw new Error('card not found')
+    }
     const charge = await db.charge.create({
         data,
     })

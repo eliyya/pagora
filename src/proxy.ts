@@ -56,7 +56,7 @@ async function refreshToken(request: NextRequest, refresh: string) {
     await db.session.update({
         where: { id: session.id },
         data: {
-            refresh_token,
+            refresh_token: weakHash(refresh_token),
             expires_at,
         },
     })
@@ -68,13 +68,13 @@ async function refreshToken(request: NextRequest, refresh: string) {
     response.cookies.set(COOKIES.SESSION, jwt, {
         httpOnly: true,
         secure: NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: 'lax',
         maxAge: 60 * 60,
     })
     response.cookies.set(COOKIES.REFRESH, refresh_token, {
         httpOnly: true,
         secure: NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: 'lax',
         maxAge: 60 * 60 * 24 * 7,
     })
     return response
