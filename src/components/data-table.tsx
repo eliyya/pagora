@@ -25,15 +25,15 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-    CircleCheckIcon,
-    LoaderIcon,
-    EllipsisVerticalIcon,
-} from 'lucide-react'
+import { CircleCheckIcon, LoaderIcon, EllipsisVerticalIcon } from 'lucide-react'
 import { DataTableColumnHeader } from './data-table-column-header'
 import { useCreateDialogState } from '@/stores/charges.store'
+import { useEditChargeDialogState } from '@/stores/edit-charge.store'
+import { useDeleteChargeDialogState } from '@/stores/delete-charge.store'
 import { Charge } from '@/db/generated/prisma/browser'
 import { CreateChargeDialog } from './create-charge-dialog'
+import { EditChargeDialog } from './edit-charge-dialog'
+import { DeleteChargeDialog } from './delete-charge-dialog'
 import { useEffect, useState } from 'react'
 import { useInfo } from '@/stores/info.store'
 import { useParams } from 'next/navigation'
@@ -261,10 +261,25 @@ const columns: ColumnDef<Charge>[] = [
                         >
                             Marks as paided
                         </DropdownMenuItem>
-                        <DropdownMenuItem>Edit</DropdownMenuItem>
+                        <DropdownMenuItem
+                            onClick={() => {
+                                useEditChargeDialogState
+                                    .getState()
+                                    .setCharge(row.original)
+                            }}
+                        >
+                            Edit
+                        </DropdownMenuItem>
                         <DropdownMenuItem>Make a copy</DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem variant='destructive'>
+                        <DropdownMenuItem
+                            variant='destructive'
+                            onClick={() => {
+                                useDeleteChargeDialogState
+                                    .getState()
+                                    .setChargeId(row.original.id)
+                            }}
+                        >
                             Delete
                         </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -329,6 +344,8 @@ export function ChargesTable() {
         <TableProvider table={table}>
             <DashboardTabs openCreateDialog={openCreateDialog} />
             <CreateChargeDialog />
+            <EditChargeDialog />
+            <DeleteChargeDialog />
         </TableProvider>
     )
 }
