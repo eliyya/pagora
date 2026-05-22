@@ -114,7 +114,7 @@ export function NavUser() {
                             </DropdownMenuItem>
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => window.location.href = '/api/auth/logout'}>
                             <LogOutIcon />
                             Log out
                         </DropdownMenuItem>
