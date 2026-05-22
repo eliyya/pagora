@@ -88,7 +88,7 @@ model Account {
 }
 
 model Session {
-  id            String   @id @default(cuid())
+  id            String   @id @default(dbgenerated("snowflake()"))
   user_id       String
   /// Hashed
   refresh_token String   @unique
