@@ -4,6 +4,7 @@ import { fetchInfoAction } from '@/actions/info.action'
 import { createChargue, paidChargeAction, batchPayChargesAction } from '@/actions/chargue.action'
 import { Card, Charge, User } from '@/db/generated/prisma/browser'
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 type DailySummary = { date: string; payments: number; charges: number }
 
@@ -13,55 +14,60 @@ interface InfoStore {
     cards: Card[]
     charges: Charge[]
     summary: DailySummary[]
+    pageSize: number
     fetch(card_id: string): void
     createCharge(amount: number, name: string): Promise<void>
     paidCharge(id: string): Promise<void>
     batchPayCharges(amount: number): Promise<void>
+    setPageSize(size: number): void
 }
 
-export const useInfo = create<InfoStore>((set, get) => ({
-    user: null,
-    card: null,
-    cards: [],
-    charges: [],
-    summary: [],
-    fetch: (card_id) => {
+export const useInfo = create<InfoStore>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      card: null,
+      cards: [],
+      charges: [],
+      summary: [],
+      pageSize: 10,
+      fetch: (card_id) => {
         fetchInfoAction(card_id).then((data) => {
-            if (data === null) return
-            set({
-                user: data.user,
-                card: data.card ?? null,
-                cards: data.cards,
-                charges: data.charges,
-                summary: data.summary,
-            })
+          if (data === null) return
+          set({
+            user: data.user,
+            card: data.card ?? null,
+            cards: data.cards,
+            charges: data.charges,
+            summary: data.summary,
+          })
         })
-    },
-    createCharge: async (amount, name) => {
+      },
+      createCharge: async (amount, name) => {
         const card_id = get().card?.id
         if (!card_id) return
         const charge = await createChargue({ amount, name, card_id })
         const charges = [...get().charges, charge]
         const map = new Map<string, number>()
         for (const c of charges) {
-            const date = c.created_at.toISOString().slice(0, 10)
-            map.set(date, (map.get(date) ?? 0) + c.amount)
+          const date = c.created_at.toISOString().slice(0, 10)
+          map.set(date, (map.get(date) ?? 0) + c.amount)
         }
         const summary = Array.from(map, ([date, totalCents]) => ({
-            date,
-            payments: 0,
-            charges: totalCents / 100,
+          date,
+          payments: 0,
+          charges: totalCents / 100,
         }))
         set({ charges, summary })
-    },
-    paidCharge: async (id) => {
+      },
+      paidCharge: async (id) => {
         const res = await paidChargeAction(id)
         if (!res.data) return
         const paid = res.data
         const charges = get().charges.map((c) => (c.id === paid.id ? { ...c, paid: paid.paid } : c))
         set({ charges })
-    },
-    batchPayCharges: async (amount) => {
+      },
+      batchPayCharges: async (amount) => {
         const card_id = get().card?.id
         if (!card_id || amount <= 0) return
         const res = await batchPayChargesAction(card_id, amount)
@@ -69,5 +75,11 @@ export const useInfo = create<InfoStore>((set, get) => ({
         const map = new Map(res.data.map((c) => [c.id, c]))
         const charges = get().charges.map((c) => map.get(c.id) ?? c)
         set({ charges })
-    },
-}))
+      },
+      setPageSize: (size: number) => set({ pageSize: size }),
+    }),
+    {
+      name: 'info-storage', // name of the item in localStorage
+    }
+  )
+)

@@ -14,6 +14,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
+import { useInfo } from '@/stores/info.store'
+import { useEffect } from 'react'
 
 interface DataTablePaginationProps<TData> {
     table: Table<TData>
@@ -22,6 +24,21 @@ interface DataTablePaginationProps<TData> {
 export function DataTablePagination<TData>({
     table,
 }: DataTablePaginationProps<TData>) {
+    const pageSize = useInfo((state) => state.pageSize)
+    const setPageSize = useInfo((state) => state.setPageSize)
+
+    // Validate and correct the store's pageSize if needed
+    useEffect(() => {
+        if (![10, 20, 25, 30, 40, 50].includes(pageSize)) {
+            setPageSize(10)
+        }
+    }, [pageSize, setPageSize])
+
+    // Sync the table's pageSize to the store's pageSize
+    useEffect(() => {
+        table.setPageSize(pageSize)
+    }, [pageSize, table])
+
     return (
         <div className='flex items-center justify-between w-full gap-2 py-2'>
             {/* <div className='flex-1 text-sm text-muted-foreground ml-2'>
@@ -33,17 +50,13 @@ export function DataTablePagination<TData>({
                     <div className='flex items-center gap-2'>
                         <p className='text-sm font-medium'>Rows per page</p>
                         <Select
-                            value={`${table.getState().pagination.pageSize}`}
+                            value={`${pageSize}`}
                             onValueChange={(value) => {
-                                table.setPageSize(Number(value))
+                                setPageSize(Number(value))
                             }}
                         >
                             <SelectTrigger className='h-8 w-15'>
-                                <SelectValue
-                                    placeholder={
-                                        table.getState().pagination.pageSize
-                                    }
-                                />
+                                <SelectValue />
                             </SelectTrigger>
                             <SelectContent side='top'>
                                 {[10, 20, 25, 30, 40, 50].map((pageSize) => (
