@@ -119,8 +119,8 @@ export function DashboardTabs({
                                 render={<Button variant='outline' size='sm' />}
                             >
                                 <Columns3Icon data-icon='inline-start' />
-                                Columns
-                                <ChevronDownIcon data-icon='inline-end' />
+                                <span className='hidden @4xl/main:inline'>Columns</span>
+                                <ChevronDownIcon data-icon='inline-end' className='hidden @4xl/main:inline' />
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align='end' className='w-32'>
                                 {table
