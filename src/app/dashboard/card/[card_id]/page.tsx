@@ -5,7 +5,7 @@ import { Suspense } from 'react'
 import { RegisterCardDialog } from '@/components/register-card-dialog'
 import { DashboardMainLayout } from '@/components/dashboard-main-layout'
 import { db } from '@/db/prisma'
-import { getCurrentUserAction } from '@/actions/users.actionl'
+import { getCurrentUserAction } from '@/actions/users.action'
 import { redirect } from 'next/navigation'
 
 export default async function Page({

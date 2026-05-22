@@ -1,5 +1,5 @@
 import { db } from '@/db/prisma'
-import { getCurrentUserAction } from '@/actions/users.actionl'
+import { getCurrentUserAction } from '@/actions/users.action'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(req: NextRequest) {

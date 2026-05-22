@@ -1,22 +1,38 @@
 'use server'
 
 import { db } from '@/db/prisma'
-import { getCurrentUserAction } from './users.actionl'
+import { getCurrentUserAction } from './users.action'
 import { Charge } from '@/db/generated/prisma/client'
 
 type DailySummary = { date: string; payments: number; charges: number }
 
-function buildDailySummary(charges: Charge[]): DailySummary[] {
-    const map = new Map<string, number>()
+async function buildDailySummary(charges: Charge[]): Promise<DailySummary[]> {
+    const map = new Map<string, { payments: number; charges: number }>()
+
     for (const c of charges) {
         const date = c.created_at.toISOString().slice(0, 10)
-        map.set(date, (map.get(date) ?? 0) + c.amount)
+        const entry = map.get(date) ?? { payments: 0, charges: 0 }
+        entry.charges += c.amount / 100
+        map.set(date, entry)
     }
-    return Array.from(map, ([date, totalCents]) => ({
-        date,
-        payments: 0,
-        charges: totalCents / 100,
-    }))
+
+    if (charges.length > 0) {
+        const chargeIds = charges.map(c => c.id)
+        const paymentLogs = await db.paymentLog.findMany({
+            where: {
+                charge_id: { in: chargeIds },
+                status: 'success',
+            },
+        })
+        for (const pl of paymentLogs) {
+            const date = pl.created_at.toISOString().slice(0, 10)
+            const entry = map.get(date) ?? { payments: 0, charges: 0 }
+            entry.payments += pl.amount / 100
+            map.set(date, entry)
+        }
+    }
+
+    return Array.from(map, ([date, v]) => ({ date, ...v })).sort((a, b) => a.date.localeCompare(b.date))
 }
 
 export async function fetchInfoAction(card_id: string) {
@@ -39,6 +55,6 @@ export async function fetchInfoAction(card_id: string) {
         card,
         cards,
         charges,
-        summary: buildDailySummary(charges),
+        summary: await buildDailySummary(charges),
     }
 }

@@ -23,7 +23,8 @@ model Charge {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  card Card @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  card         Card         @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  payment_logs PaymentLog[]
 
   @@map("chargues")
 }
@@ -97,4 +98,24 @@ model Session {
   updated_at    DateTime @updatedAt
 
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+enum PaymentStatus {
+  success
+  failed
+  pending
+  refunded
+}
+
+model PaymentLog {
+  id         String        @id @default(dbgenerated("snowflake()"))
+  charge_id  String
+  amount     Int
+  status     PaymentStatus
+  created_at DateTime      @default(now())
+
+  charge Charge @relation(fields: [charge_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([charge_id])
+  @@index([created_at])
 }
