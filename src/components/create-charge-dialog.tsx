@@ -42,8 +42,7 @@ export function CreateChargeDialog() {
         setErrors(newErrors)
         if (Object.keys(newErrors).length > 0) return
 
-        const amount = Math.round(parsed * 100)
-        await createCharge(amount, name)
+        await createCharge(parsed, name)
         formRef.current?.reset()
         setErrors({})
         toggle(false)

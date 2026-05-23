@@ -58,8 +58,7 @@ export function EditChargeDialog() {
         setErrors(newErrors)
         if (Object.keys(newErrors).length > 0) return
 
-        const amount = Math.round(parsed * 100)
-        await updateCharge(charge.id, name, amount)
+        await updateCharge(charge.id, name, parsed)
         setErrors({})
         toggle(false)
     }
