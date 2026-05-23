@@ -7,7 +7,7 @@ import {
 } from '@/schemas/card.schema'
 import { revalidateTag } from 'next/cache'
 import { z } from 'zod'
-import { getCurrentUserAction } from './users.actionl'
+import { getCurrentUserAction } from './users.action'
 import { Card } from '@/db/generated/prisma/browser'
 
 export async function createCardAction({

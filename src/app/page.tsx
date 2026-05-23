@@ -89,7 +89,7 @@ export default async function Home() {
                                 size='lg'
                                 className='h-12 gap-2 rounded-xl bg-accent px-6 text-accent-foreground shadow-lg shadow-accent/40 transition-all hover:scale-[1.02] hover:bg-accent/90 hover:shadow-xl hover:shadow-accent/50'
                             >
-                                Comenzar gratis
+                                Comenzar
                                 <ArrowRight className='size-4' />
                             </Button>
                         </a>

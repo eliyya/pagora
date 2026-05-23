@@ -1,9 +1,16 @@
 'use client'
 
 import { fetchInfoAction } from '@/actions/info.action'
-import { createChargue, paidChargeAction, batchPayChargesAction } from '@/actions/chargue.action'
+import {
+    createChargue,
+    paidChargeAction,
+    batchPayChargesAction,
+    updateChargeAction,
+    deleteChargeAction,
+} from '@/actions/chargue.action'
 import { Card, Charge, User } from '@/db/generated/prisma/browser'
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 type DailySummary = { date: string; payments: number; charges: number }
 
@@ -13,61 +20,144 @@ interface InfoStore {
     cards: Card[]
     charges: Charge[]
     summary: DailySummary[]
+    pageSize: number
     fetch(card_id: string): void
     createCharge(amount: number, name: string): Promise<void>
+    updateCharge(id: string, name: string, amount: number): Promise<void>
+    deleteCharge(id: string): Promise<void>
     paidCharge(id: string): Promise<void>
     batchPayCharges(amount: number): Promise<void>
+    setPageSize(size: number): void
 }
 
-export const useInfo = create<InfoStore>((set, get) => ({
-    user: null,
-    card: null,
-    cards: [],
-    charges: [],
-    summary: [],
-    fetch: (card_id) => {
-        fetchInfoAction(card_id).then((data) => {
-            if (data === null) return
-            set({
-                user: data.user,
-                card: data.card ?? null,
-                cards: data.cards,
-                charges: data.charges,
-                summary: data.summary,
-            })
-        })
-    },
-    createCharge: async (amount, name) => {
-        const card_id = get().card?.id
-        if (!card_id) return
-        const charge = await createChargue({ amount, name, card_id })
-        const charges = [...get().charges, charge]
-        const map = new Map<string, number>()
-        for (const c of charges) {
-            const date = c.created_at.toISOString().slice(0, 10)
-            map.set(date, (map.get(date) ?? 0) + c.amount)
-        }
-        const summary = Array.from(map, ([date, totalCents]) => ({
-            date,
-            payments: 0,
-            charges: totalCents / 100,
-        }))
-        set({ charges, summary })
-    },
-    paidCharge: async (id) => {
-        const res = await paidChargeAction(id)
-        if (!res.data) return
-        const paid = res.data
-        const charges = get().charges.map((c) => (c.id === paid.id ? { ...c, paid: paid.paid } : c))
-        set({ charges })
-    },
-    batchPayCharges: async (amount) => {
-        const card_id = get().card?.id
-        if (!card_id || amount <= 0) return
-        const res = await batchPayChargesAction(card_id, amount)
-        if (!res.data) return
-        const map = new Map(res.data.map((c) => [c.id, c]))
-        const charges = get().charges.map((c) => map.get(c.id) ?? c)
-        set({ charges })
-    },
-}))
+export const useInfo = create<InfoStore>()(
+    persist(
+        (set, get) => ({
+            user: null,
+            card: null,
+            cards: [],
+            charges: [],
+            summary: [],
+            pageSize: 10,
+            fetch: (card_id) => {
+                fetchInfoAction(card_id).then((data) => {
+                    if (data === null) return
+                    set({
+                        user: data.user,
+                        card: data.card ?? null,
+                        cards: data.cards,
+                        charges: data.charges,
+                        summary: data.summary,
+                    })
+                })
+            },
+            createCharge: async (amount, name) => {
+                const card_id = get().card?.id
+                if (!card_id) return
+                const charge = await createChargue({ amount, name, card_id })
+                const charges = [...get().charges, charge]
+                const oldSummary = get().summary
+                const map = new Map(oldSummary.map((s) => [s.date, { ...s }]))
+                for (const c of charges) {
+                    const date = c.created_at.toISOString().slice(0, 10)
+                    const entry = map.get(date) ?? {
+                        date,
+                        payments: 0,
+                        charges: 0,
+                    }
+                    entry.charges += c.amount / 100
+                    map.set(date, entry)
+                }
+                const summary = Array.from(map, ([_, v]) => v).sort((a, b) =>
+                    a.date.localeCompare(b.date),
+                )
+                set({ charges, summary })
+            },
+            updateCharge: async (id, name, amount) => {
+                const res = await updateChargeAction(id, { name, amount })
+                if (!res.data) return
+                const updated = res.data
+                const charges = get().charges.map((c) =>
+                    c.id === updated.id ? updated : c,
+                )
+                set({ charges })
+            },
+            deleteCharge: async (id) => {
+                const res = await deleteChargeAction(id)
+                if (!res.data) return
+                const charges = get().charges.filter((c) => c.id !== id)
+                const oldSummary = get().summary
+                const deletedCharge = get().charges.find((c) => c.id === id)
+                const map = new Map(oldSummary.map((s) => [s.date, { ...s }]))
+                if (deletedCharge) {
+                    const date = deletedCharge.created_at.toISOString().slice(0, 10)
+                    const entry = map.get(date)
+                    if (entry) {
+                        entry.charges -= deletedCharge.amount / 100
+                        if (entry.charges < 0) entry.charges = 0
+                    }
+                }
+                const summary = Array.from(map, ([_, v]) => v).sort((a, b) =>
+                    a.date.localeCompare(b.date),
+                )
+                set({ charges, summary })
+            },
+            paidCharge: async (id) => {
+                const res = await paidChargeAction(id)
+                if (!res.data) return
+                const paid = res.data
+                const paymentAmount = res.paymentAmount ?? 0
+                const charges = get().charges.map((c) =>
+                    c.id === paid.id ? { ...c, paid: paid.paid } : c,
+                )
+                const charge = charges.find((c) => c.id === id)
+                const summary = get().summary.map((s) => ({ ...s }))
+                if (charge && paymentAmount > 0) {
+                    const date = charge.created_at.toISOString().slice(0, 10)
+                    const existing = summary.find((s) => s.date === date)
+                    if (existing) {
+                        existing.payments += paymentAmount / 100
+                    } else {
+                        summary.push({
+                            date,
+                            payments: paymentAmount / 100,
+                            charges: 0,
+                        })
+                    }
+                    summary.sort((a, b) => a.date.localeCompare(b.date))
+                }
+                set({ charges, summary })
+            },
+            batchPayCharges: async (amount) => {
+                const card_id = get().card?.id
+                if (!card_id || amount <= 0) return
+                const res = await batchPayChargesAction(card_id, amount)
+                if (!res.data) return
+                const map = new Map(res.data.map((c) => [c.id, c]))
+                const charges = get().charges.map((c) => map.get(c.id) ?? c)
+                const summary = get().summary.map((s) => ({ ...s }))
+                if (res.payments) {
+                    for (const p of res.payments) {
+                        const date = p.chargeDate.toISOString().slice(0, 10)
+                        const existing = summary.find((s) => s.date === date)
+                        if (existing) {
+                            existing.payments += p.amount / 100
+                        } else {
+                            summary.push({
+                                date,
+                                payments: p.amount / 100,
+                                charges: 0,
+                            })
+                        }
+                    }
+                    summary.sort((a, b) => a.date.localeCompare(b.date))
+                }
+                set({ charges, summary })
+            },
+            setPageSize: (size: number) => set({ pageSize: size }),
+        }),
+        {
+            name: 'info-storage',
+        },
+    ),
+)
