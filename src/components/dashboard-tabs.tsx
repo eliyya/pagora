@@ -1,6 +1,5 @@
 'use client'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
     DropdownMenu,
@@ -33,6 +32,7 @@ import {
 import { useState } from 'react'
 import { ChartAreaInteractive } from './chart-area-interactive'
 import { ChargesDataTable } from './charges-data-table'
+import { AgentTokensPanel } from './agent-tokens-panel'
 import { PayChargesDialog } from './pay-charges-dialog'
 import { useTableContext } from './table-context'
 
@@ -66,7 +66,7 @@ export function DashboardTabs({
                         items={[
                             { label: 'Charges', value: 'charges' },
                             { label: 'Graph', value: 'graph' },
-                            { label: 'Key Personnel', value: 'key-personnel' },
+                            { label: 'Agents', value: 'agents' },
                         ]}
                     >
                         <SelectTrigger
@@ -80,9 +80,7 @@ export function DashboardTabs({
                             <SelectGroup>
                                 <SelectItem value='charges'>Charges</SelectItem>
                                 <SelectItem value='graph'>Graph</SelectItem>
-                                <SelectItem value='key-personnel'>
-                                    Key Personnel
-                                </SelectItem>
+                                <SelectItem value='agents'>Agents</SelectItem>
                                 <SelectItem value='focus-documents'>
                                     Focus Documents
                                 </SelectItem>
@@ -106,9 +104,7 @@ export function DashboardTabs({
                     <TabsList className='hidden **:data-[slot=badge]:size-5 **:data-[slot=badge]:rounded-full **:data-[slot=badge]:bg-muted-foreground/30 **:data-[slot=badge]:px-1 @4xl/main:flex'>
                         <TabsTrigger value='charges'>Charges</TabsTrigger>
                         <TabsTrigger value='graph'>Graph</TabsTrigger>
-                        <TabsTrigger value='key-personnel'>
-                            Key Personnel <Badge variant='secondary'>2</Badge>
-                        </TabsTrigger>
+                        <TabsTrigger value='agents'>Agents</TabsTrigger>
                         <TabsTrigger value='focus-documents'>
                             Focus Documents
                         </TabsTrigger>
@@ -181,10 +177,10 @@ export function DashboardTabs({
                     <ChartAreaInteractive />
                 </TabsContent>
                 <TabsContent
-                    value='key-personnel'
+                    value='agents'
                     className='flex flex-col px-4 lg:px-6'
                 >
-                    <div className='aspect-video w-full flex-1 rounded-lg border border-dashed'></div>
+                    <AgentTokensPanel />
                 </TabsContent>
                 <TabsContent
                     value='focus-documents'
