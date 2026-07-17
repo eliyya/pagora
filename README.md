@@ -1,36 +1,139 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Pagora
 
-## Getting Started
+Pagora is a personal credit-card tracking app. It helps you record what each
+card charge was really for, how much of it has been paid, and which purchases
+are still pending after partial or early payments.
 
-First, run the development server:
+The goal is not to replace the bank statement. The goal is to add the missing
+context banks usually do not give: "what exactly am I paying for?"
+
+## Why it exists
+
+Credit-card statements usually show the merchant, date, and amount, but not the
+real reason behind the purchase. When you make early payments or pay only part
+of the card balance, the bank reduces the total balance, but it does not tell
+you which specific purchases that money covered.
+
+Pagora lets you:
+
+- Register credit cards and their basic billing details.
+- Add charges with a human-readable name and amount.
+- Track paid and pending amounts per charge.
+- Pay one specific charge.
+- Pay several charges in order with a single amount.
+- Keep a payment log for later review.
+
+This makes it easier to know what you already covered, what moved into the next
+billing cycle, and what remains unpaid.
+
+## Current Status
+
+This is an active work in progress. The core idea and data model are already in
+place, but the product, copy, and UX are still being refined.
+
+## Stack
+
+- Next.js
+- React
+- TypeScript
+- Prisma
+- PostgreSQL
+- Tailwind CSS
+- shadcn/ui
+- Zustand
+- Discord OAuth
+
+## Development
+
+Install dependencies:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Start the local database:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+docker compose up -d
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Run migrations and generate Prisma client:
 
-## Learn More
+```bash
+pnpm prisma migrate dev
+pnpm prisma generate
+```
 
-To learn more about Next.js, take a look at the following resources:
+Start the development server:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+pnpm dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Open http://localhost:3000.
 
-## Deploy on Vercel
+## MCP Access
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Pagora exposes a protected MCP HTTP endpoint at:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```txt
+/api/mcp
+```
+
+Agents must authenticate every request with a bearer token:
+
+```http
+Authorization: Bearer pagora_...
+```
+
+Token management uses the normal Pagora web session:
+
+- `GET /api/agent-tokens` lists token metadata.
+- `POST /api/agent-tokens` creates a token and returns the raw token once.
+- `DELETE /api/agent-tokens/:token_id` revokes a token.
+
+Create-token body:
+
+```json
+{
+  "name": "local agent",
+  "scopes": ["cards:read", "charges:read", "charges:write", "payments:write"],
+  "expires_at": "2026-12-31T23:59:59.000Z"
+}
+```
+
+Available scopes:
+
+- `cards:read`
+- `charges:read`
+- `charges:write`
+- `payments:write`
+
+Available MCP tools:
+
+- `list_cards`
+- `list_charges`
+- `create_charge`
+- `pay_charge`
+- `pay_card_amount`
+- `summarize_card`
+
+Example MCP request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list"
+}
+```
+
+Protected-resource metadata is exposed at:
+
+```txt
+/.well-known/oauth-protected-resource
+```
+
+## Notes
+
+Amounts are stored as integers in cents to avoid floating-point money issues.
