@@ -6,6 +6,7 @@ import {
     CreateCharge,
     DEFAULT_CREATE_CHARGE_VALUE,
 } from '@/schemas/charge'
+import { EditChargeSchema } from '@/schemas/edit-charge.schema'
 import z from 'zod'
 import { getCurrentUserAction } from './users.action'
 import { Charge } from '@/db/generated/prisma/browser'
@@ -131,6 +132,97 @@ export async function paidChargeAction(id: string) {
         return {
             data: newCharge,
             paymentAmount,
+        }
+    } catch (error) {
+        console.log(error)
+        return {
+            error: `${error}`,
+        }
+    }
+}
+
+export async function updateChargeAction(id: string, data: z.infer<typeof EditChargeSchema>) {
+    const user = await getCurrentUserAction()
+    if (!user) {
+        return {
+            error: 'unauthorized' as const,
+        }
+    }
+
+    const charge = await db.charge.findFirst({
+        where: {
+            id,
+            card: {
+                owner_id: user.id,
+            },
+        },
+    })
+
+    if (!charge) {
+        return {
+            error: 'not found' as const,
+        }
+    }
+
+    try {
+        const parsed = EditChargeSchema.safeParse(data)
+        if (!parsed.success) {
+            const errors = z.flattenError(parsed.error)
+            return {
+                error: 'validation error' as const,
+                fieldErrors: errors.fieldErrors,
+            }
+        }
+
+        const updatedCharge = await db.charge.update({
+            where: { id },
+            data: {
+                name: parsed.data.name,
+                amount: parsed.data.amount,
+            },
+        })
+
+        return {
+            data: updatedCharge,
+        }
+    } catch (error) {
+        console.log(error)
+        return {
+            error: `${error}`,
+        }
+    }
+}
+
+export async function deleteChargeAction(id: string) {
+    const user = await getCurrentUserAction()
+    if (!user) {
+        return {
+            error: 'unauthorized' as const,
+        }
+    }
+
+    const charge = await db.charge.findFirst({
+        where: {
+            id,
+            card: {
+                owner_id: user.id,
+            },
+        },
+    })
+
+    if (!charge) {
+        return {
+            error: 'not found' as const,
+        }
+    }
+
+    try {
+        await db.charge.delete({
+            where: { id },
+        })
+
+        return {
+            data: { id },
         }
     } catch (error) {
         console.log(error)

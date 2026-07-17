@@ -12,6 +12,7 @@ datasource db {
   provider = "postgresql"
 }
 
+
 model Charge {
   id         String   @id @default(dbgenerated("snowflake()"))
   name       String
@@ -64,6 +65,7 @@ model User {
   accounts     Account[]
   cards        Card[]
   agent_tokens AgentToken[]
+  shareQuotas share_quota[]
 
   @@map("users")
 }
@@ -138,4 +140,21 @@ model AgentToken {
   @@index([user_id])
   @@index([revoked_at])
   @@map("agent_tokens")
+}
+
+model Plan {
+  id         String   @id @default(dbgenerated("snowflake()"))
+  name       String
+  price      Int      /// at int like 13.99 => 1399
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model share_quota {
+  id         String   @id @default(dbgenerated("snowflake()"))
+  user_id    String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
