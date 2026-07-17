@@ -96,6 +96,24 @@ const columns: ColumnDef<Charge>[] = [
         // },
         enableHiding: false,
     },
+    {
+        accessorKey: 'created_at',
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title='Date' />
+        ),
+        cell: ({ row }) => {
+            const rawDate = row.getValue('created_at')
+            const date =
+                rawDate instanceof Date ? rawDate : new Date(String(rawDate))
+            const formatted = new Intl.DateTimeFormat('es-MX', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+            }).format(date)
+
+            return <div className='whitespace-nowrap'>{formatted}</div>
+        },
+    },
     // {
     //     accessorKey: 'type',
     //     header: 'Section Type',
