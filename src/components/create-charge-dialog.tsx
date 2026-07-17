@@ -13,10 +13,11 @@ import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { FormEvent, useRef, useState } from 'react'
+import { FormEvent, useState } from 'react'
 import { useCreateDialogState } from '@/stores/charges.store'
 import { useShallow } from 'zustand/shallow'
 import { useInfo } from '@/stores/info.store'
+import { CurrencyInput } from './currency-input'
 
 export function CreateChargeDialog() {
     const { open, toggle } = useCreateDialogState(
@@ -26,32 +27,40 @@ export function CreateChargeDialog() {
         })),
     )
     const createCharge = useInfo((s) => s.createCharge)
-    const formRef = useRef<HTMLFormElement>(null)
+    const [name, setName] = useState('')
+    const [amountCents, setAmountCents] = useState(0)
     const [errors, setErrors] = useState<{ name?: string; amount?: string }>({})
+
+    function resetForm() {
+        setName('')
+        setAmountCents(0)
+        setErrors({})
+    }
+
+    function handleOpenChange(nextOpen: boolean) {
+        if (!nextOpen) resetForm()
+        toggle(nextOpen)
+    }
 
     async function handleSubmit(e: FormEvent<HTMLFormElement>) {
         e.preventDefault()
-        const form = new FormData(e.currentTarget)
-        const name = (form.get('name') as string)?.trim()
-        const rawAmount = form.get('amount') as string
-        const parsed = parseFloat(rawAmount)
+        const trimmedName = name.trim()
 
         const newErrors: typeof errors = {}
-        if (!name) newErrors.name = 'Name is required'
-        if (isNaN(parsed) || parsed <= 0) newErrors.amount = 'Invalid amount'
+        if (!trimmedName) newErrors.name = 'Name is required'
+        if (amountCents <= 0) newErrors.amount = 'Invalid amount'
         setErrors(newErrors)
         if (Object.keys(newErrors).length > 0) return
 
-        await createCharge(parsed, name)
-        formRef.current?.reset()
-        setErrors({})
-        toggle(false)
+        await createCharge(amountCents / 100, trimmedName)
+        resetForm()
+        handleOpenChange(false)
     }
 
     return (
-        <Dialog open={open} onOpenChange={toggle}>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogContent className='sm:max-w-sm'>
-                <form ref={formRef} onSubmit={handleSubmit}>
+                <form onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle>New Charge</DialogTitle>
                         <DialogDescription>
@@ -61,19 +70,25 @@ export function CreateChargeDialog() {
                     <FieldGroup>
                         <Field>
                             <Label htmlFor='name-1'>Name</Label>
-                            <Input id='name-1' name='name' />
+                            <Input
+                                id='name-1'
+                                name='name'
+                                value={name}
+                                onChange={(event) =>
+                                    setName(event.target.value)
+                                }
+                            />
                             {errors.name && (
                                 <FieldError>{errors.name}</FieldError>
                             )}
                         </Field>
                         <Field>
                             <Label htmlFor='username-1'>Amount</Label>
-                            <Input
+                            <CurrencyInput
                                 id='username-1'
                                 name='amount'
-                                type='number'
-                                step='0.01'
-                                min={0}
+                                valueCents={amountCents}
+                                onValueCentsChange={setAmountCents}
                             />
                             {errors.amount && (
                                 <FieldError>{errors.amount}</FieldError>
