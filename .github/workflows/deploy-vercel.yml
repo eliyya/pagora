@@ -7,6 +7,7 @@ on:
 env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
 jobs:
   deploy:
@@ -21,4 +22,9 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Deploy with Vercel CLI
+        if: env.VERCEL_TOKEN != ''
+        run: npx vercel --prod --token="$VERCEL_TOKEN"
+      - name: Skip Vercel CLI deploy
+        if: env.VERCEL_TOKEN == ''
+        run: echo "VERCEL_TOKEN is not configured; relying on Vercel Git integration."
