@@ -48,6 +48,7 @@ export async function fetchInfoAction(card_id: string) {
     if (card) {
         charges = await db.charge.findMany({
             where: { card_id },
+            orderBy: { created_at: 'desc' },
         })
     }
     return {

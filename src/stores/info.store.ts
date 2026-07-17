@@ -55,7 +55,7 @@ export const useInfo = create<InfoStore>()(
                 const card_id = get().card?.id
                 if (!card_id) return
                 const charge = await createChargue({ amount, name, card_id })
-                const charges = [...get().charges, charge]
+                const charges = [charge, ...get().charges]
                 const oldSummary = get().summary
                 const map = new Map(oldSummary.map((s) => [s.date, { ...s }]))
                 for (const c of charges) {
