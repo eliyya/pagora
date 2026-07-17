@@ -1,6 +1,6 @@
 import { db } from '@/db/prisma'
 import { COOKIES } from '@/lib/constants'
-import { PUBLIC_KEY } from '@/lib/envs'
+import { getPublicKey } from '@/lib/envs'
 import { jwtVerify } from 'jose'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -12,7 +12,9 @@ export async function GET(req: NextRequest) {
 
     const token = req.cookies.get(COOKIES.SESSION)?.value
     if (token) {
-        const payload = await jwtVerify(token, PUBLIC_KEY).catch(() => null)
+        const payload = await jwtVerify(token, await getPublicKey()).catch(
+            () => null,
+        )
         if (payload?.payload?.session_id) {
             await db.session.delete({
                 where: { id: payload.payload.session_id as string },

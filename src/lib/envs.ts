@@ -1,6 +1,19 @@
 import { importPKCS8, importSPKI } from 'jose'
 
-async function getPrivateKey() {
+let privateKeyPromise: ReturnType<typeof importPKCS8> | null = null
+let publicKeyPromise: ReturnType<typeof importSPKI> | null = null
+
+export async function getPrivateKey() {
+    privateKeyPromise ??= importPrivateKey()
+    return privateKeyPromise
+}
+
+export async function getPublicKey() {
+    publicKeyPromise ??= importPublicKey()
+    return publicKeyPromise
+}
+
+async function importPrivateKey() {
     try {
         return await importPKCS8(process.env.PRIVATE_KEY!, 'RS256')
     } catch (e) {
@@ -11,7 +24,7 @@ async function getPrivateKey() {
     }
 }
 
-async function getPublicKey() {
+async function importPublicKey() {
     try {
         return await importSPKI(process.env.PUBLIC_KEY!, 'RS256')
     } catch (e) {
@@ -21,9 +34,6 @@ async function getPublicKey() {
         )
     }
 }
-
-export const PRIVATE_KEY = await getPrivateKey()
-export const PUBLIC_KEY = await getPublicKey()
 
 export const {
     DISCORD_APLICATION_ID = '',

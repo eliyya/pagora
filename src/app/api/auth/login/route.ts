@@ -5,8 +5,8 @@ import { createJWT, encrypt, generateRefreshToken, weakHash } from '@/lib/crypt'
 import {
     DISCORD_APLICATION_ID,
     DISCORD_CLIENT_SECRET,
+    getPublicKey,
     NODE_ENV,
-    PUBLIC_KEY,
 } from '@/lib/envs'
 import { jwtVerify } from 'jose'
 import { NextRequest, NextResponse } from 'next/server'
@@ -24,9 +24,10 @@ export async function GET(req: NextRequest) {
 
     const prevsession = req.cookies.get(COOKIES.SESSION)?.value
     if (!code && prevsession) {
-        const jwtPayload = await jwtVerify(prevsession, PUBLIC_KEY).catch(
-            () => null,
-        )
+        const jwtPayload = await jwtVerify(
+            prevsession,
+            await getPublicKey(),
+        ).catch(() => null)
         if (jwtPayload) {
             return NextResponse.redirect(new URL('/dashboard', req.url))
         }

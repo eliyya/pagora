@@ -7,9 +7,6 @@ import {
     type AgentTokenRecord,
 } from '@/lib/agent-tokens'
 
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
-
 type JsonRpcId = string | number | null
 
 interface JsonRpcRequest {
