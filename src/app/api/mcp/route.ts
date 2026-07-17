@@ -6,6 +6,7 @@ import {
     getAgentTokenFromRequest,
     type AgentTokenRecord,
 } from '@/lib/agent-tokens'
+import { getMcpVersion } from '@/lib/mcp-version'
 
 type JsonRpcId = string | number | null
 
@@ -315,7 +316,21 @@ async function summarizeCard(
     })
 }
 
+function getMcpVersionTool(request?: Request) {
+    return textContent(getMcpVersion(request))
+}
+
 const tools = [
+    {
+        name: 'get_mcp_version',
+        description:
+            'Return Pagora MCP version and deployment metadata for rollout checks.',
+        inputSchema: {
+            type: 'object',
+            properties: {},
+            additionalProperties: false,
+        },
+    },
     {
         name: 'list_cards',
         description: 'List the authenticated user credit cards in Pagora.',
@@ -398,8 +413,11 @@ async function callTool(
     token: AgentTokenRecord,
     name: string,
     args: Record<string, unknown>,
+    request?: Request,
 ) {
     switch (name) {
+        case 'get_mcp_version':
+            return getMcpVersionTool(request)
         case 'list_cards':
             return await listCards(token)
         case 'list_charges':
@@ -417,18 +435,22 @@ async function callTool(
     }
 }
 
-async function handleRpc(request: JsonRpcRequest, token: AgentTokenRecord) {
-    const id = request.id ?? null
+async function handleRpc(
+    rpcRequest: JsonRpcRequest,
+    token: AgentTokenRecord,
+    httpRequest: Request,
+) {
+    const id = rpcRequest.id ?? null
 
-    if (!request.method) {
+    if (!rpcRequest.method) {
         return jsonRpcError(id, -32600, 'Invalid JSON-RPC request')
     }
 
-    if (request.method.startsWith('notifications/')) {
+    if (rpcRequest.method.startsWith('notifications/')) {
         return new Response(null, { status: 202 })
     }
 
-    switch (request.method) {
+    switch (rpcRequest.method) {
         case 'initialize':
             return jsonRpcResult(id, {
                 protocolVersion: '2025-11-25',
@@ -437,30 +459,35 @@ async function handleRpc(request: JsonRpcRequest, token: AgentTokenRecord) {
                 },
                 serverInfo: {
                     name: 'pagora',
-                    version: '0.1.0',
+                    version: getMcpVersion(httpRequest).mcp_version,
                 },
             })
         case 'tools/list':
             return jsonRpcResult(id, { tools })
         case 'tools/call': {
-            const params = request.params as ToolCallParams
+            const params = rpcRequest.params as ToolCallParams
             if (!params?.name) {
                 return jsonRpcError(id, -32602, 'Tool name is required')
             }
             const args = params.arguments ?? {}
-            const result = await callTool(token, params.name, args)
+            const result = await callTool(token, params.name, args, httpRequest)
             return jsonRpcResult(id, result)
         }
         default:
-            return jsonRpcError(id, -32601, `Method not found: ${request.method}`)
+            return jsonRpcError(
+                id,
+                -32601,
+                `Method not found: ${rpcRequest.method}`,
+            )
     }
 }
 
 export async function GET(request: Request) {
     return Response.json({
-        name: 'pagora',
+        ...getMcpVersion(request),
         transport: 'streamable-http',
         endpoint: new URL('/api/mcp', request.url).toString(),
+        version_endpoint: new URL('/api/mcp/version', request.url).toString(),
         authorization: 'Authorization: Bearer <pagora_agent_token>',
         token_management: {
             list: new URL('/api/agent-tokens', request.url).toString(),
@@ -487,7 +514,7 @@ export async function POST(request: Request) {
     }
 
     try {
-        return await handleRpc(payload, token)
+        return await handleRpc(payload, token, request)
     } catch (error) {
         if (error instanceof AgentAuthError) {
             return agentUnauthorizedResponse(error, request)

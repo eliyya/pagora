@@ -134,6 +134,14 @@ Protected-resource metadata is exposed at:
 /.well-known/oauth-protected-resource
 ```
 
+MCP deployment/version metadata is public so agents can verify rollouts:
+
+```txt
+/api/mcp/version
+```
+
+Authenticated agents can also call the MCP tool `get_mcp_version`.
+
 ## Notes
 
 Amounts are stored as integers in cents to avoid floating-point money issues.
