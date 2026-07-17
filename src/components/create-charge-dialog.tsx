@@ -52,7 +52,7 @@ export function CreateChargeDialog() {
         setErrors(newErrors)
         if (Object.keys(newErrors).length > 0) return
 
-        await createCharge(amountCents / 100, trimmedName)
+        await createCharge(amountCents, trimmedName)
         resetForm()
         handleOpenChange(false)
     }

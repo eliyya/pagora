@@ -19,14 +19,18 @@ export async function createChargue(data: CreateChargueProps) {
     if (!user) {
         throw new Error('unauthorized')
     }
+    const parsed = CreateChargeSchema.safeParse(data)
+    if (!parsed.success) {
+        throw new Error('invalid charge')
+    }
     const card = await db.card.findFirst({
-        where: { id: data.card_id, owner_id: user.id },
+        where: { id: parsed.data.card_id, owner_id: user.id },
     })
     if (!card) {
         throw new Error('card not found')
     }
     const charge = await db.charge.create({
-        data,
+        data: parsed.data,
     })
     return charge
 }

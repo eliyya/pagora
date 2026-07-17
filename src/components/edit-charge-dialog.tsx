@@ -69,7 +69,7 @@ function EditChargeForm({
         setErrors(newErrors)
         if (Object.keys(newErrors).length > 0) return
 
-        await onSubmit(charge.id, trimmedName, amountCents / 100)
+        await onSubmit(charge.id, trimmedName, amountCents)
         setErrors({})
         onClose()
     }
