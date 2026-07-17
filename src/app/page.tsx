@@ -67,20 +67,20 @@ export default async function Home() {
                 <div className='relative z-10 flex max-w-xl flex-col items-start text-left'>
                     <span className='mb-5 inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent/15 px-4 py-1.5 text-xs font-medium text-foreground/80'>
                         <Sparkles className='size-3.5 text-accent' />
-                        La plataforma más simple para cobrar
+                        Control claro para tus tarjetas de crédito
                     </span>
 
                     <h1 className='text-5xl font-bold leading-tight tracking-tight text-foreground sm:text-6xl'>
-                        Cobra sin complicaciones,{' '}
+                        Entiende exactamente{' '}
                         <span className='bg-linear-to-r from-accent to-primary bg-clip-text text-transparent'>
-                            queda en control.
+                            qué estás pagando.
                         </span>
                     </h1>
 
                     <p className='mt-6 max-w-md text-base text-muted-foreground'>
-                        Pagora centraliza tus cobros, registra pagos y te da una
-                        vista clara de quién te debe y cuánto. Sin Excel, sin
-                        caos.
+                        Pagora te ayuda a registrar cada cargo de tus tarjetas,
+                        separar pagos parciales y saber qué compras siguen
+                        pendientes aunque el banco solo muestre el total.
                     </p>
 
                     <div className='mt-8 flex flex-col gap-3 sm:flex-row'>
@@ -89,7 +89,7 @@ export default async function Home() {
                                 size='lg'
                                 className='h-12 gap-2 rounded-xl bg-accent px-6 text-accent-foreground shadow-lg shadow-accent/40 transition-all hover:scale-[1.02] hover:bg-accent/90 hover:shadow-xl hover:shadow-accent/50'
                             >
-                                Comenzar
+                                Ordenar mis tarjetas
                                 <ArrowRight className='size-4' />
                             </Button>
                         </a>
@@ -108,8 +108,8 @@ export default async function Home() {
                     <div className='mt-10 flex flex-wrap gap-4 text-xs text-muted-foreground'>
                         {[
                             { icon: ShieldCheck, label: 'OAuth seguro' },
-                            { icon: Zap, label: 'Sin configuración' },
-                            { icon: Clock, label: 'Listo en segundos' },
+                            { icon: Zap, label: 'Pagos parciales' },
+                            { icon: Clock, label: 'Cortes sin confusión' },
                         ].map(({ icon: Icon, label }) => (
                             <span
                                 key={label}
@@ -145,10 +145,11 @@ export default async function Home() {
                         Características
                     </p>
                     <h2 className='mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl'>
-                        Todo lo que necesitas, nada que no.
+                        Tu estado de cuenta, pero con contexto.
                     </h2>
                     <p className='mt-3 text-muted-foreground'>
-                        Diseñado para ser simple, no minimalista por accidente.
+                        Diseñado para saber qué pagaste, qué falta y qué se fue
+                        al siguiente corte.
                     </p>
                 </div>
 
@@ -156,13 +157,13 @@ export default async function Home() {
                     {[
                         {
                             icon: LayoutDashboard,
-                            title: 'Panel centralizado',
-                            desc: 'Ve todos tus cobros y su estado desde un solo lugar, sin abrir mil pestañas.',
+                            title: 'Tarjetas centralizadas',
+                            desc: 'Registra tus tarjetas, límites, días de corte y fechas de pago en un solo lugar.',
                         },
                         {
                             icon: TrendingUp,
-                            title: 'Seguimiento de pagos',
-                            desc: 'Registra cuánto se ha pagado y cuánto falta en tiempo real.',
+                            title: 'Cargos con nombre real',
+                            desc: 'Guarda qué compraste realmente, no solo el comercio y el monto que muestra el banco.',
                         },
                         {
                             icon: ShieldCheck,
@@ -171,18 +172,18 @@ export default async function Home() {
                         },
                         {
                             icon: Zap,
-                            title: 'Rápido de usar',
-                            desc: 'Agrega un cargo en segundos. Sin formularios infinitos ni pasos innecesarios.',
+                            title: 'Pagos flexibles',
+                            desc: 'Marca un cargo como pagado, abona a varios cargos o distribuye un pago automáticamente.',
                         },
                         {
                             icon: CheckCircle2,
-                            title: 'Historial limpio',
-                            desc: 'Cada operación queda registrada para que tengas respaldo de todo.',
+                            title: 'Pendientes claros',
+                            desc: 'Ve cuánto falta pagar de cada compra, incluso después de pagos parciales o adelantados.',
                         },
                         {
                             icon: Clock,
-                            title: 'Siempre disponible',
-                            desc: 'Accede desde cualquier dispositivo, en cualquier momento.',
+                            title: 'Cortes sin perderte',
+                            desc: 'Distingue lo que pagaste en el momento de lo que quedó para el siguiente corte.',
                         },
                     ].map(({ icon: Icon, title, desc }) => (
                         <div
@@ -213,7 +214,7 @@ export default async function Home() {
                         Cómo funciona
                     </p>
                     <h2 className='mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl'>
-                        En 3 pasos estás listo.
+                        De cargo confuso a pago claro.
                     </h2>
                 </div>
 
@@ -226,13 +227,13 @@ export default async function Home() {
                         },
                         {
                             step: '02',
-                            title: 'Crea tus cobros',
-                            desc: 'Agrega el nombre y monto de cada cargo en segundos.',
+                            title: 'Registra tus cargos',
+                            desc: 'Anota qué fue cada compra, cuánto costó y en qué tarjeta quedó.',
                         },
                         {
                             step: '03',
-                            title: 'Registra los pagos',
-                            desc: 'Marca lo que se va pagando y mira el balance actualizado.',
+                            title: 'Aplica tus pagos',
+                            desc: 'Paga un cargo específico, varios cargos o deja que Pagora distribuya el monto.',
                         },
                     ].map(({ step, title, desc }) => (
                         <div
@@ -257,11 +258,11 @@ export default async function Home() {
             <section className='relative z-10 mx-auto max-w-3xl px-6 pb-32 text-center'>
                 <div className='rounded-3xl border border-accent/30 bg-linear-to-br from-accent/20 via-card/90 to-secondary/20 p-10 shadow-xl shadow-primary/10 backdrop-blur-sm'>
                     <h2 className='text-3xl font-bold tracking-tight text-foreground sm:text-4xl'>
-                        ¿Listo para ordenar tus cobros?
+                        ¿Listo para entender tus tarjetas?
                     </h2>
                     <p className='mt-4 text-muted-foreground'>
-                        Únete con tu cuenta de Discord y empieza hoy mismo. Es
-                        gratis.
+                        Entra con Discord y empieza a registrar cargos con el
+                        contexto que tu estado de cuenta no guarda.
                     </p>
                     <a href='/auth/login' className='mt-8 inline-block'>
                         <Button

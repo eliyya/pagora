@@ -3,7 +3,7 @@
 import { cookies } from 'next/headers'
 import { jwtVerify } from 'jose'
 import { db } from '@/db/prisma'
-import { PUBLIC_KEY } from '@/lib/envs'
+import { getPublicKey } from '@/lib/envs'
 import { COOKIES } from '@/lib/constants'
 
 export async function getCurrentUserAction() {
@@ -15,7 +15,7 @@ export async function getCurrentUserAction() {
             return null
         }
 
-        const { payload } = await jwtVerify(token, PUBLIC_KEY)
+        const { payload } = await jwtVerify(token, await getPublicKey())
 
         if (!payload.sub) {
             return null

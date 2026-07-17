@@ -43,14 +43,10 @@ const chartConfig = {
 
 export function ChartAreaInteractive() {
     const isMobile = useIsMobile()
-    const [timeRange, setTimeRange] = React.useState('90d')
+    const [timeRange, setTimeRange] = React.useState(() =>
+        isMobile ? '7d' : '90d',
+    )
     const summary = useInfo((s) => s.summary)
-
-    React.useEffect(() => {
-        if (isMobile) {
-            setTimeRange('7d')
-        }
-    }, [isMobile])
 
     const today = new Date()
     const filteredData = summary.filter((item) => {
