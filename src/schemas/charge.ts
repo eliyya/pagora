@@ -3,10 +3,8 @@ import { z } from 'zod'
 export const CreateChargeSchema = z.object({
     amount: z.coerce
         .number()
-        .refine((num) => Number.isInteger(Number(num.toFixed(2)) * 100), {
-            error: 'Only up to 2 decimal places are allowed',
-        })
-        .transform((num) => Math.round(num * 100)),
+        .int('Amount must be stored in cents')
+        .positive('Amount must be greater than zero'),
     name: z.string().trim().min(1),
     card_id: z.string(),
 })
@@ -20,5 +18,5 @@ export const DEFAULT_CREATE_CHARGE_VALUE: CreateCharge = {
 }
 
 export const FormChargeSchema = CreateChargeSchema.extend({
-    amount: z.number().transform((num) => Number(num.toFixed(2))),
+    amount: z.number().int().positive(),
 })
