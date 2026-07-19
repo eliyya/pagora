@@ -6,6 +6,11 @@ import {
     getAgentTokenFromRequest,
     type AgentTokenRecord,
 } from '@/lib/agent-tokens'
+import {
+    assertCardReadable,
+    assertCardWritable,
+    listCardsForUser,
+} from '@/lib/card-access'
 import { getMcpVersion } from '@/lib/mcp-version'
 
 type JsonRpcId = string | number | null
@@ -83,15 +88,14 @@ function serializeMoney(cents: number) {
 
 async function listCards(token: AgentTokenRecord) {
     assertAgentScope(token, 'cards:read')
-    const cards = await db.card.findMany({
-        where: { owner_id: token.user_id },
-        orderBy: { name: 'asc' },
-    })
+    const sections = await listCardsForUser(token.user_id)
     return textContent({
-        cards: cards.map((card) => ({
+        cards: sections.all.map((card) => ({
             ...card,
             credit_limit: serializeMoney(card.credit_limit),
         })),
+        own_cards: sections.own.map((card) => card.id),
+        shared_with_me_cards: sections.sharedWithMe.map((card) => card.id),
     })
 }
 
@@ -106,16 +110,16 @@ async function listCharges(
             : undefined
 
     if (cardId) {
-        const card = await db.card.findFirst({
-            where: { id: cardId, owner_id: token.user_id },
-        })
-        if (!card) throw new Error('card not found')
+        await assertCardReadable(cardId, token.user_id)
     }
 
+    const readableCards = await listCardsForUser(token.user_id)
     const charges = await db.charge.findMany({
         where: {
             card_id: cardId,
-            card: { owner_id: token.user_id },
+            card: cardId
+                ? undefined
+                : { id: { in: readableCards.all.map((card) => card.id) } },
         },
         orderBy: { created_at: 'asc' },
     })
@@ -139,10 +143,7 @@ async function createCharge(
     const name = getString(args, 'name')
     const amount = getMoneyAmount(args, 'amount')
 
-    const card = await db.card.findFirst({
-        where: { id: cardId, owner_id: token.user_id },
-    })
-    if (!card) throw new Error('card not found')
+    await assertCardWritable(cardId, token.user_id)
 
     const charge = await db.charge.create({
         data: {
@@ -169,13 +170,9 @@ async function payCharge(
     assertAgentScope(token, 'payments:write')
     const chargeId = getString(args, 'charge_id')
 
-    const charge = await db.charge.findFirst({
-        where: {
-            id: chargeId,
-            card: { owner_id: token.user_id },
-        },
-    })
+    const charge = await db.charge.findFirst({ where: { id: chargeId } })
     if (!charge) throw new Error('charge not found')
+    await assertCardWritable(charge.card_id, token.user_id)
 
     const paymentAmount = charge.amount - charge.paid
     if (paymentAmount <= 0) {
@@ -216,10 +213,7 @@ async function payCardAmount(
     const cardId = getString(args, 'card_id')
     let remaining = getMoneyAmount(args, 'amount')
 
-    const card = await db.card.findFirst({
-        where: { id: cardId, owner_id: token.user_id },
-    })
-    if (!card) throw new Error('card not found')
+    await assertCardWritable(cardId, token.user_id)
 
     const payments = await db.$transaction(async (tx) => {
         const charges = await tx.charge.findMany({
@@ -275,10 +269,7 @@ async function summarizeCard(
     assertAgentScope(token, 'charges:read')
     const cardId = getString(args, 'card_id')
 
-    const card = await db.card.findFirst({
-        where: { id: cardId, owner_id: token.user_id },
-    })
-    if (!card) throw new Error('card not found')
+    const { card } = await assertCardReadable(cardId, token.user_id)
 
     const charges = await db.charge.findMany({
         where: { card_id: cardId },

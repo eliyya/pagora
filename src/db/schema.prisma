@@ -49,9 +49,60 @@ model Card {
 
   owner   User     @relation(fields: [owner_id], references: [id], onDelete: Cascade)
   charges Charge[]
+  members CardMember[]
+  invitations CardInvitation[]
 
   @@unique([owner_id, name])
   @@map("cards")
+}
+
+enum CardPermission {
+  read
+  write
+}
+
+enum CardInvitationStatus {
+  pending
+  accepted
+  declined
+  canceled
+}
+
+model CardMember {
+  id         String         @id @default(dbgenerated("snowflake()"))
+  card_id    String
+  user_id    String
+  permission CardPermission @default(read)
+  created_at DateTime       @default(now())
+  updated_at DateTime       @updatedAt
+
+  card Card @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([card_id, user_id])
+  @@index([user_id])
+  @@map("card_members")
+}
+
+model CardInvitation {
+  id           String               @id @default(dbgenerated("snowflake()"))
+  card_id      String
+  inviter_id   String
+  invitee_id   String
+  permission   CardPermission       @default(read)
+  status       CardInvitationStatus @default(pending)
+  responded_at DateTime?
+  created_at   DateTime             @default(now())
+  updated_at   DateTime             @updatedAt
+
+  card    Card @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  inviter User @relation("CardInvitationInviter", fields: [inviter_id], references: [id], onDelete: Cascade)
+  invitee User @relation("CardInvitationInvitee", fields: [invitee_id], references: [id], onDelete: Cascade)
+
+  @@index([card_id])
+  @@index([invitee_id, status])
+  @@index([inviter_id])
+  @@map("card_invitations")
 }
 
 model User {
@@ -64,6 +115,9 @@ model User {
   sessions     Session[]
   accounts     Account[]
   cards        Card[]
+  cardMembers  CardMember[]
+  sentCardInvitations CardInvitation[] @relation("CardInvitationInviter")
+  receivedCardInvitations CardInvitation[] @relation("CardInvitationInvitee")
   agent_tokens AgentToken[]
   shareQuotas share_quota[]
 

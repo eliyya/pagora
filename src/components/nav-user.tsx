@@ -10,6 +10,12 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+    listPendingCardInvitationsAction,
+    respondToCardInvitationAction,
+} from '@/actions/card.action'
 import {
     SidebarMenu,
     SidebarMenuButton,
@@ -24,24 +30,54 @@ import {
     BellIcon,
     LogOutIcon,
 } from 'lucide-react'
+import { useState } from 'react'
 import { useShallow } from 'zustand/shallow'
+
+type PendingInvitation = Awaited<
+    ReturnType<typeof listPendingCardInvitationsAction>
+>[number]
 
 export function NavUser() {
     const { isMobile } = useSidebar()
-    const { user } = useInfo(
+    const { user, pendingInvitations, refreshCards } = useInfo(
         useShallow((state) => ({
             user: state.user,
+            pendingInvitations: state.pendingInvitations,
+            refreshCards: state.refreshCards,
         })),
     )
+    const [invitations, setInvitations] = useState<PendingInvitation[]>([])
+    const [loadingInvitationId, setLoadingInvitationId] = useState<string | null>(
+        null,
+    )
+    const [open, setOpen] = useState(false)
 
     const displayName = user?.username ?? 'User'
     const displayEmail = user?.email ?? ''
     const initials = displayName.charAt(0).toUpperCase()
 
+    async function refreshInvitations() {
+        setInvitations(await listPendingCardInvitationsAction())
+    }
+
+    function handleOpenChange(nextOpen: boolean) {
+        setOpen(nextOpen)
+        if (nextOpen) {
+            refreshInvitations()
+        }
+    }
+
+    async function respond(invitationId: string, response: 'accept' | 'decline') {
+        setLoadingInvitationId(invitationId)
+        await respondToCardInvitationAction(invitationId, response)
+        await Promise.all([refreshInvitations(), refreshCards()])
+        setLoadingInvitationId(null)
+    }
+
     return (
         <SidebarMenu>
             <SidebarMenuItem>
-                <DropdownMenu>
+                <DropdownMenu open={open} onOpenChange={handleOpenChange}>
                     <DropdownMenuTrigger
                         render={
                             <SidebarMenuButton
@@ -111,7 +147,66 @@ export function NavUser() {
                             <DropdownMenuItem>
                                 <BellIcon />
                                 Notifications
+                                {pendingInvitations > 0 && (
+                                    <Badge className='ml-auto'>
+                                        {pendingInvitations}
+                                    </Badge>
+                                )}
                             </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuGroup>
+                            <DropdownMenuLabel>Card invitations</DropdownMenuLabel>
+                            {invitations.length === 0 && (
+                                <DropdownMenuItem disabled>
+                                    No pending invitations
+                                </DropdownMenuItem>
+                            )}
+                            {invitations.map((invitation) => (
+                                <DropdownMenuItem
+                                    key={invitation.id}
+                                    onSelect={(event) => event.preventDefault()}
+                                    className='flex-col items-stretch gap-2'
+                                >
+                                    <div className='min-w-0 text-sm'>
+                                        <div className='truncate font-medium'>
+                                            {invitation.card.name}
+                                        </div>
+                                        <div className='truncate text-xs text-muted-foreground'>
+                                            From {invitation.inviter.username} - {invitation.permission}
+                                        </div>
+                                    </div>
+                                    <div className='flex gap-2'>
+                                        <Button
+                                            size='sm'
+                                            className='h-7 flex-1'
+                                            disabled={
+                                                loadingInvitationId ===
+                                                invitation.id
+                                            }
+                                            onClick={() =>
+                                                respond(invitation.id, 'accept')
+                                            }
+                                        >
+                                            Accept
+                                        </Button>
+                                        <Button
+                                            size='sm'
+                                            variant='outline'
+                                            className='h-7 flex-1'
+                                            disabled={
+                                                loadingInvitationId ===
+                                                invitation.id
+                                            }
+                                            onClick={() =>
+                                                respond(invitation.id, 'decline')
+                                            }
+                                        >
+                                            Decline
+                                        </Button>
+                                    </div>
+                                </DropdownMenuItem>
+                            ))}
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={() => window.location.href = '/api/auth/logout'}>

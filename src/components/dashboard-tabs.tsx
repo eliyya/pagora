@@ -28,6 +28,7 @@ import {
     ChevronDownIcon,
     PlusIcon,
     DollarSignIcon,
+    Share2Icon,
 } from 'lucide-react'
 import { useState } from 'react'
 import { ChartAreaInteractive } from './chart-area-interactive'
@@ -35,6 +36,8 @@ import { ChargesDataTable } from './charges-data-table'
 import { AgentTokensPanel } from './agent-tokens-panel'
 import { PayChargesDialog } from './pay-charges-dialog'
 import { useTableContext } from './table-context'
+import { useInfo } from '@/stores/info.store'
+import { ShareCardDialog } from './share-card-dialog'
 
 export function DashboardTabs({
     openCreateDialog,
@@ -43,7 +46,11 @@ export function DashboardTabs({
 }) {
     const table = useTableContext()
     const [payOpen, setPayOpen] = useState(false)
+    const [shareOpen, setShareOpen] = useState(false)
     const [tab, setTab] = useState('charges')
+    const cardAccess = useInfo((s) => s.cardAccess)
+    const canWrite = cardAccess === 'owner' || cardAccess === 'write'
+    const canShare = cardAccess === 'owner'
 
     return (
         <div>
@@ -146,6 +153,7 @@ export function DashboardTabs({
                             variant='default'
                             size='sm'
                             onClick={() => openCreateDialog(true)}
+                            disabled={!canWrite}
                         >
                             <PlusIcon />
                             <span className='hidden lg:inline'>
@@ -156,12 +164,25 @@ export function DashboardTabs({
                             variant='outline'
                             size='sm'
                             onClick={() => setPayOpen(true)}
+                            disabled={!canWrite}
                         >
                             <DollarSignIcon />
                             <span className='hidden lg:inline'>
                                 Pay
                             </span>
                         </Button>
+                        {canShare && (
+                            <Button
+                                variant='outline'
+                                size='sm'
+                                onClick={() => setShareOpen(true)}
+                            >
+                                <Share2Icon />
+                                <span className='hidden lg:inline'>
+                                    Share
+                                </span>
+                            </Button>
+                        )}
                     </div>
                 </div>
                 <TabsContent
@@ -190,6 +211,7 @@ export function DashboardTabs({
                 </TabsContent>
             </Tabs>
             <PayChargesDialog open={payOpen} onOpenChange={setPayOpen} />
+            <ShareCardDialog open={shareOpen} onOpenChange={setShareOpen} />
         </div>
     )
 }

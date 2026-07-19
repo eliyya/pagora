@@ -8,20 +8,39 @@ import {
     updateChargeAction,
     deleteChargeAction,
 } from '@/actions/chargue.action'
+import { getCardSectionsAction } from '@/actions/card.action'
 import { Card, Charge, User } from '@/db/generated/prisma/browser'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 type DailySummary = { date: string; payments: number; charges: number }
+type CardAccessLevel = 'none' | 'read' | 'write' | 'owner'
+type CardItem = Card & {
+    access?: CardAccessLevel
+    sharedBy?: {
+        id: string
+        username: string
+        email: string
+    }
+}
+type SharedByMeCard = Awaited<
+    ReturnType<typeof getCardSectionsAction>
+>['sharedByMe'][number]
 
 interface InfoStore {
     user: User | null
-    card: Card | null
-    cards: Card[]
+    card: CardItem | null
+    cards: CardItem[]
+    ownCards: CardItem[]
+    sharedWithMeCards: CardItem[]
+    sharedByMeCards: SharedByMeCard[]
+    cardAccess: CardAccessLevel
+    pendingInvitations: number
     charges: Charge[]
     summary: DailySummary[]
     pageSize: number
     fetch(card_id: string): void
+    refreshCards(): Promise<void>
     createCharge(amount: number, name: string): Promise<void>
     updateCharge(id: string, name: string, amount: number): Promise<void>
     deleteCharge(id: string): Promise<void>
@@ -36,6 +55,11 @@ export const useInfo = create<InfoStore>()(
             user: null,
             card: null,
             cards: [],
+            ownCards: [],
+            sharedWithMeCards: [],
+            sharedByMeCards: [],
+            cardAccess: 'none',
+            pendingInvitations: 0,
             charges: [],
             summary: [],
             pageSize: 10,
@@ -46,12 +70,29 @@ export const useInfo = create<InfoStore>()(
                         user: data.user,
                         card: data.card ?? null,
                         cards: data.cards,
+                        ownCards: data.ownCards,
+                        sharedWithMeCards: data.sharedWithMeCards,
+                        cardAccess: data.cardAccess,
+                        pendingInvitations: data.pendingInvitations,
                         charges: data.charges,
                         summary: data.summary,
                     })
+                    get().refreshCards()
+                })
+            },
+            refreshCards: async () => {
+                const sections = await getCardSectionsAction()
+                set({
+                    cards: [...sections.own, ...sections.sharedWithMe],
+                    ownCards: sections.own,
+                    sharedWithMeCards: sections.sharedWithMe,
+                    sharedByMeCards: sections.sharedByMe,
+                    pendingInvitations: sections.pendingInvitations,
                 })
             },
             createCharge: async (amount, name) => {
+                const access = get().cardAccess
+                if (access !== 'owner' && access !== 'write') return
                 const card_id = get().card?.id
                 if (!card_id) return
                 const charge = await createChargue({ amount, name, card_id })
@@ -68,12 +109,14 @@ export const useInfo = create<InfoStore>()(
                     entry.charges += c.amount / 100
                     map.set(date, entry)
                 }
-                const summary = Array.from(map, ([_, v]) => v).sort((a, b) =>
+                const summary = Array.from(map.values()).sort((a, b) =>
                     a.date.localeCompare(b.date),
                 )
                 set({ charges, summary })
             },
             updateCharge: async (id, name, amount) => {
+                const access = get().cardAccess
+                if (access !== 'owner' && access !== 'write') return
                 const res = await updateChargeAction(id, { name, amount })
                 if (!res.data) return
                 const updated = res.data
@@ -83,6 +126,8 @@ export const useInfo = create<InfoStore>()(
                 set({ charges })
             },
             deleteCharge: async (id) => {
+                const access = get().cardAccess
+                if (access !== 'owner' && access !== 'write') return
                 const res = await deleteChargeAction(id)
                 if (!res.data) return
                 const charges = get().charges.filter((c) => c.id !== id)
@@ -97,12 +142,14 @@ export const useInfo = create<InfoStore>()(
                         if (entry.charges < 0) entry.charges = 0
                     }
                 }
-                const summary = Array.from(map, ([_, v]) => v).sort((a, b) =>
+                const summary = Array.from(map.values()).sort((a, b) =>
                     a.date.localeCompare(b.date),
                 )
                 set({ charges, summary })
             },
             paidCharge: async (id) => {
+                const access = get().cardAccess
+                if (access !== 'owner' && access !== 'write') return
                 const res = await paidChargeAction(id)
                 if (!res.data) return
                 const paid = res.data
@@ -129,6 +176,8 @@ export const useInfo = create<InfoStore>()(
                 set({ charges, summary })
             },
             batchPayCharges: async (amount) => {
+                const access = get().cardAccess
+                if (access !== 'owner' && access !== 'write') return
                 const card_id = get().card?.id
                 if (!card_id || amount <= 0) return
                 const res = await batchPayChargesAction(card_id, amount)
