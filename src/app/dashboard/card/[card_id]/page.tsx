@@ -4,9 +4,9 @@ import { SectionCards } from '@/components/section-cards'
 import { Suspense } from 'react'
 import { RegisterCardDialog } from '@/components/register-card-dialog'
 import { DashboardMainLayout } from '@/components/dashboard-main-layout'
-import { db } from '@/db/prisma'
 import { getCurrentUserAction } from '@/actions/users.action'
 import { redirect } from 'next/navigation'
+import { getCardAccess } from '@/lib/card-access'
 
 export default async function Page({
     params,
@@ -28,15 +28,12 @@ async function Cached({
     if (!user) {
         redirect('/auth/login')
     }
-    const card = await db.card.findFirst({
-        where: { id: card_id, owner_id: user.id },
-        select: { id: true, name: true },
-    })
-    if (!card) {
+    const result = await getCardAccess(card_id, user.id)
+    if (!result || result.access === 'none') {
         redirect('/dashboard')
     }
     return (
-        <DashboardMainLayout title={card.name}>
+        <DashboardMainLayout title={result.card.name}>
             <SectionCards />
             <Suspense>
                 <ChargesTable />

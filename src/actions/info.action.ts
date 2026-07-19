@@ -3,6 +3,7 @@
 import { db } from '@/db/prisma'
 import { getCurrentUserAction } from './users.action'
 import { Charge } from '@/db/generated/prisma/client'
+import { getCardAccess, listCardsForUser } from '@/lib/card-access'
 
 type DailySummary = { date: string; payments: number; charges: number }
 
@@ -40,10 +41,12 @@ export async function fetchInfoAction(card_id: string) {
     if (!user) {
         return null
     }
-    const cards = await db.card.findMany({
-        where: { owner_id: user.id },
-    })
-    const card = cards.find((c) => c.id === card_id)
+    const cardSections = await listCardsForUser(user.id)
+    const accessResult = await getCardAccess(card_id, user.id)
+    const card =
+        accessResult && accessResult.access !== 'none'
+            ? cardSections.all.find((item) => item.id === card_id)
+            : undefined
     let charges: Charge[] = []
     if (card) {
         charges = await db.charge.findMany({
@@ -54,8 +57,14 @@ export async function fetchInfoAction(card_id: string) {
     return {
         user,
         card,
-        cards,
+        cards: cardSections.all,
+        ownCards: cardSections.own,
+        sharedWithMeCards: cardSections.sharedWithMe,
+        cardAccess: accessResult?.access ?? 'none',
         charges,
         summary: await buildDailySummary(charges),
+        pendingInvitations: await db.cardInvitation.count({
+            where: { invitee_id: user.id, status: 'pending' },
+        }),
     }
 }

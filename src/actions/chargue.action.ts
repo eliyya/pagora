@@ -10,6 +10,7 @@ import { EditChargeSchema } from '@/schemas/edit-charge.schema'
 import z from 'zod'
 import { getCurrentUserAction } from './users.action'
 import { Charge } from '@/db/generated/prisma/browser'
+import { assertCardWritable } from '@/lib/card-access'
 
 interface CreateChargueProps extends CreateCharge {
     card_id: string
@@ -23,12 +24,7 @@ export async function createChargue(data: CreateChargueProps) {
     if (!parsed.success) {
         throw new Error('invalid charge')
     }
-    const card = await db.card.findFirst({
-        where: { id: parsed.data.card_id, owner_id: user.id },
-    })
-    if (!card) {
-        throw new Error('card not found')
-    }
+    await assertCardWritable(parsed.data.card_id, user.id)
     const charge = await db.charge.create({
         data: parsed.data,
     })
@@ -66,6 +62,11 @@ export async function batchPayChargesAction(card_id: string, amount: number) {
     const user = await getCurrentUserAction()
     if (!user) {
         return { error: 'unauthorized' as const }
+    }
+    try {
+        await assertCardWritable(card_id, user.id)
+    } catch {
+        return { error: 'not found' as const }
     }
     const all = await db.charge.findMany({
         where: { card_id },
@@ -107,15 +108,18 @@ export async function paidChargeAction(id: string) {
     const charge = await db.charge.findFirst({
         where: {
             id,
-            card: {
-                owner_id: user.id,
-            },
         },
+        include: { card: true },
     })
     if (!charge) {
         return {
             error: 'not found' as const,
         }
+    }
+    try {
+        await assertCardWritable(charge.card_id, user.id)
+    } catch {
+        return { error: 'not found' as const }
     }
     try {
         const paymentAmount = charge.amount - charge.paid
@@ -156,9 +160,6 @@ export async function updateChargeAction(id: string, data: z.infer<typeof EditCh
     const charge = await db.charge.findFirst({
         where: {
             id,
-            card: {
-                owner_id: user.id,
-            },
         },
     })
 
@@ -166,6 +167,11 @@ export async function updateChargeAction(id: string, data: z.infer<typeof EditCh
         return {
             error: 'not found' as const,
         }
+    }
+    try {
+        await assertCardWritable(charge.card_id, user.id)
+    } catch {
+        return { error: 'not found' as const }
     }
 
     try {
@@ -208,9 +214,6 @@ export async function deleteChargeAction(id: string) {
     const charge = await db.charge.findFirst({
         where: {
             id,
-            card: {
-                owner_id: user.id,
-            },
         },
     })
 
@@ -218,6 +221,11 @@ export async function deleteChargeAction(id: string) {
         return {
             error: 'not found' as const,
         }
+    }
+    try {
+        await assertCardWritable(charge.card_id, user.id)
+    } catch {
+        return { error: 'not found' as const }
     }
 
     try {
