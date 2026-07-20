@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select'
 import { useInfo } from '@/stores/info.store'
 import { FormEvent, useState } from 'react'
+import { toast } from 'sonner'
 
 export function ShareCardDialog({
     open,
@@ -34,17 +35,15 @@ export function ShareCardDialog({
 }) {
     const card = useInfo((s) => s.card)
     const refreshCards = useInfo((s) => s.refreshCards)
-    const [username, setUsername] = useState('')
+    const [userIdentifier, setUserIdentifier] = useState('')
     const [permission, setPermission] = useState<'read' | 'write'>('read')
     const [error, setError] = useState<string | null>(null)
-    const [success, setSuccess] = useState<string | null>(null)
     const [pending, setPending] = useState(false)
 
     function reset() {
-        setUsername('')
+        setUserIdentifier('')
         setPermission('read')
         setError(null)
-        setSuccess(null)
         setPending(false)
     }
 
@@ -56,23 +55,24 @@ export function ShareCardDialog({
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault()
         if (!card) return
-        const trimmed = username.trim()
+        const trimmed = userIdentifier.trim()
         if (!trimmed) {
-            setError('Username is required')
+            setError('Username or email is required')
             return
         }
         setPending(true)
         setError(null)
-        setSuccess(null)
         const result = await inviteCardUserAction(card.id, trimmed, permission)
         setPending(false)
         if (result.error) {
             setError(result.error)
             return
         }
-        setSuccess(`Invitation sent to ${trimmed}`)
-        setUsername('')
         await refreshCards()
+        toast.success('Invitation sent', {
+            description: `Sent to ${trimmed}`,
+        })
+        handleOpenChange(false)
     }
 
     return (
@@ -87,21 +87,16 @@ export function ShareCardDialog({
                     </DialogHeader>
                     <FieldGroup>
                         <Field>
-                            <Label htmlFor='share-username'>Username</Label>
+                            <Label htmlFor='share-user'>Username or email</Label>
                             <Input
-                                id='share-username'
-                                value={username}
+                                id='share-user'
+                                value={userIdentifier}
                                 onChange={(event) =>
-                                    setUsername(event.target.value)
+                                    setUserIdentifier(event.target.value)
                                 }
-                                placeholder='username'
+                                placeholder='user@example.com'
                             />
                             {error && <FieldError>{error}</FieldError>}
-                            {success && (
-                                <p className='text-xs text-muted-foreground'>
-                                    {success}
-                                </p>
-                            )}
                         </Field>
                         <Field>
                             <Label>Permission</Label>
