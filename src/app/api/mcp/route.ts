@@ -76,10 +76,11 @@ function getMoneyAmount(args: Record<string, unknown>, key: string) {
     if (!Number.isFinite(value) || value <= 0) {
         throw new Error(`${key} must be a positive number`)
     }
-    if (!Number.isInteger(value * 100)) {
+    const cents = Math.round(value * 100)
+    if (Math.abs(value * 100 - cents) > 1e-6) {
         throw new Error(`${key} supports up to 2 decimal places`)
     }
-    return Number(value.toFixed(2)) * 100
+    return cents
 }
 
 function serializeMoney(cents: number) {
