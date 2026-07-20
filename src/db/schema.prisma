@@ -46,6 +46,7 @@ model Card {
   credit_limit Int
   bank         String?
   brand        CARD_BRAND @default(mastercard)
+  updated_at   DateTime   @default(now()) @updatedAt
 
   owner   User     @relation(fields: [owner_id], references: [id], onDelete: Cascade)
   charges Charge[]

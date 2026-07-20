@@ -80,6 +80,25 @@ export async function assertCardOwner(cardId: string, userId: string) {
     return result
 }
 
+type CardActivityClient = {
+    card: {
+        update(args: {
+            where: { id: string }
+            data: { updated_at: Date }
+        }): Promise<unknown>
+    }
+}
+
+export async function touchCardActivity(
+    cardId: string,
+    client: CardActivityClient = db,
+) {
+    await client.card.update({
+        where: { id: cardId },
+        data: { updated_at: new Date() },
+    })
+}
+
 export async function listCardsForUser(userId: string) {
     const [ownCards, sharedMemberships] = await Promise.all([
         db.card.findMany({

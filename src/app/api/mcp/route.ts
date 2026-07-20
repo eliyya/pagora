@@ -10,6 +10,7 @@ import {
     assertCardReadable,
     assertCardWritable,
     listCardsForUser,
+    touchCardActivity,
 } from '@/lib/card-access'
 import { getMcpVersion } from '@/lib/mcp-version'
 
@@ -146,12 +147,16 @@ async function createCharge(
 
     await assertCardWritable(cardId, token.user_id)
 
-    const charge = await db.charge.create({
-        data: {
-            card_id: cardId,
-            name,
-            amount,
-        },
+    const charge = await db.$transaction(async (tx) => {
+        const created = await tx.charge.create({
+            data: {
+                card_id: cardId,
+                name,
+                amount,
+            },
+        })
+        await touchCardActivity(cardId, tx)
+        return created
     })
 
     return textContent({
@@ -192,6 +197,7 @@ async function payCharge(
                 status: 'success',
             },
         })
+        await touchCardActivity(charge.card_id, tx)
         return paid
     })
 
@@ -252,6 +258,10 @@ async function payCardAmount(
                 charge_name: charge.name,
                 amount: serializeMoney(amount),
             })
+        }
+
+        if (applied.length > 0) {
+            await touchCardActivity(cardId, tx)
         }
 
         return applied

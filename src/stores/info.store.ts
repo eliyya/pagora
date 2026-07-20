@@ -35,11 +35,12 @@ interface InfoStore {
     sharedWithMeCards: CardItem[]
     sharedByMeCards: SharedByMeCard[]
     cardAccess: CardAccessLevel
+    cardVersion: string | null
     pendingInvitations: number
     charges: Charge[]
     summary: DailySummary[]
     pageSize: number
-    fetch(card_id: string): void
+    fetch(card_id: string): Promise<void>
     refreshCards(): Promise<void>
     createCharge(amount: number, name: string): Promise<void>
     updateCharge(id: string, name: string, amount: number): Promise<void>
@@ -59,26 +60,27 @@ export const useInfo = create<InfoStore>()(
             sharedWithMeCards: [],
             sharedByMeCards: [],
             cardAccess: 'none',
+            cardVersion: null,
             pendingInvitations: 0,
             charges: [],
             summary: [],
             pageSize: 10,
-            fetch: (card_id) => {
-                fetchInfoAction(card_id).then((data) => {
-                    if (data === null) return
-                    set({
-                        user: data.user,
-                        card: data.card ?? null,
-                        cards: data.cards,
-                        ownCards: data.ownCards,
-                        sharedWithMeCards: data.sharedWithMeCards,
-                        cardAccess: data.cardAccess,
-                        pendingInvitations: data.pendingInvitations,
-                        charges: data.charges,
-                        summary: data.summary,
-                    })
-                    get().refreshCards()
+            fetch: async (card_id) => {
+                const data = await fetchInfoAction(card_id)
+                if (data === null) return
+                set({
+                    user: data.user,
+                    card: data.card ?? null,
+                    cards: data.cards,
+                    ownCards: data.ownCards,
+                    sharedWithMeCards: data.sharedWithMeCards,
+                    cardAccess: data.cardAccess,
+                    cardVersion: data.cardVersion,
+                    pendingInvitations: data.pendingInvitations,
+                    charges: data.charges,
+                    summary: data.summary,
                 })
+                await get().refreshCards()
             },
             refreshCards: async () => {
                 const sections = await getCardSectionsAction()

@@ -40,6 +40,7 @@ import { useParams } from 'next/navigation'
 import { useShallow } from 'zustand/shallow'
 import { DashboardTabs } from './dashboard-tabs'
 import { TableProvider } from './table-context'
+import { getCardVersionAction } from '@/actions/info.action'
 
 export const schema = z.object({
     id: z.number(),
@@ -331,6 +332,42 @@ export function ChargesTable() {
             fetch(card_id)
         }
     }, [card_id, fetch])
+    useEffect(() => {
+        if (!card_id) return
+
+        let disposed = false
+        let checking = false
+
+        async function checkForCardUpdates() {
+            if (checking || document.visibilityState !== 'visible') return
+            checking = true
+            try {
+                const version = await getCardVersionAction(card_id)
+                const currentVersion = useInfo.getState().cardVersion
+                if (!disposed && version && version !== currentVersion) {
+                    await useInfo.getState().fetch(card_id)
+                }
+            } finally {
+                checking = false
+            }
+        }
+
+        const interval = window.setInterval(checkForCardUpdates, 5000)
+        const checkWhenVisible = () => {
+            if (document.visibilityState === 'visible') {
+                void checkForCardUpdates()
+            }
+        }
+        window.addEventListener('focus', checkForCardUpdates)
+        document.addEventListener('visibilitychange', checkWhenVisible)
+
+        return () => {
+            disposed = true
+            window.clearInterval(interval)
+            window.removeEventListener('focus', checkForCardUpdates)
+            document.removeEventListener('visibilitychange', checkWhenVisible)
+        }
+    }, [card_id])
 
     // eslint-disable-next-line react-hooks/incompatible-library
     const table = useReactTable({
