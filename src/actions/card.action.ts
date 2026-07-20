@@ -158,7 +158,7 @@ export async function getCardSectionsAction() {
 
 export async function inviteCardUserAction(
     cardId: string,
-    username: string,
+    userIdentifier: string,
     permission: unknown,
 ) {
     const user = await getCurrentUserAction()
@@ -166,15 +166,25 @@ export async function inviteCardUserAction(
         return { error: 'unauthorized' as const }
     }
 
-    const targetUsername = username.trim()
-    if (!targetUsername) {
-        return { error: 'username is required' as const }
+    const targetIdentifier = userIdentifier.trim()
+    if (!targetIdentifier) {
+        return { error: 'username or email is required' as const }
     }
 
     try {
         await assertCardOwner(cardId, user.id)
-        const invitee = await db.user.findUnique({
-            where: { username: targetUsername },
+        const invitee = await db.user.findFirst({
+            where: {
+                OR: [
+                    { username: targetIdentifier },
+                    {
+                        email: {
+                            equals: targetIdentifier,
+                            mode: 'insensitive',
+                        },
+                    },
+                ],
+            },
         })
         if (!invitee) {
             return { error: 'user not found' as const }
