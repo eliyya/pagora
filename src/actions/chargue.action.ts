@@ -10,7 +10,7 @@ import { EditChargeSchema } from '@/schemas/edit-charge.schema'
 import z from 'zod'
 import { getCurrentUserAction } from './users.action'
 import { Charge } from '@/db/generated/prisma/browser'
-import { assertCardWritable } from '@/lib/card-access'
+import { assertCardWritable, touchCardActivity } from '@/lib/card-access'
 
 interface CreateChargueProps extends CreateCharge {
     card_id: string
@@ -25,8 +25,12 @@ export async function createChargue(data: CreateChargueProps) {
         throw new Error('invalid charge')
     }
     await assertCardWritable(parsed.data.card_id, user.id)
-    const charge = await db.charge.create({
-        data: parsed.data,
+    const charge = await db.$transaction(async (tx) => {
+        const created = await tx.charge.create({
+            data: parsed.data,
+        })
+        await touchCardActivity(parsed.data.card_id, tx)
+        return created
     })
     return charge
 }
@@ -68,33 +72,47 @@ export async function batchPayChargesAction(card_id: string, amount: number) {
     } catch {
         return { error: 'not found' as const }
     }
-    const all = await db.charge.findMany({
-        where: { card_id },
-        orderBy: { created_at: 'asc' },
-    })
-    const updated: Charge[] = []
-    const payments: Array<{ chargeId: string; amount: number; chargeDate: Date }> = []
-    let remaining = amount
-    for (const charge of all) {
-        if (remaining <= 0) break
-        const owed = charge.amount - charge.paid
-        if (owed <= 0) continue
-        const pay = Math.min(owed, remaining)
-        remaining -= pay
-        const newCharge = await db.charge.update({
-            where: { id: charge.id },
-            data: { paid: charge.paid + pay },
+    const { updated, payments } = await db.$transaction(async (tx) => {
+        const all = await tx.charge.findMany({
+            where: { card_id },
+            orderBy: { created_at: 'asc' },
         })
-        await db.paymentLog.create({
-            data: {
-                charge_id: charge.id,
+        const updated: Charge[] = []
+        const payments: Array<{
+            chargeId: string
+            amount: number
+            chargeDate: Date
+        }> = []
+        let remaining = amount
+        for (const charge of all) {
+            if (remaining <= 0) break
+            const owed = charge.amount - charge.paid
+            if (owed <= 0) continue
+            const pay = Math.min(owed, remaining)
+            remaining -= pay
+            const newCharge = await tx.charge.update({
+                where: { id: charge.id },
+                data: { paid: charge.paid + pay },
+            })
+            await tx.paymentLog.create({
+                data: {
+                    charge_id: charge.id,
+                    amount: pay,
+                    status: 'success',
+                },
+            })
+            payments.push({
+                chargeId: charge.id,
                 amount: pay,
-                status: 'success',
-            },
-        })
-        payments.push({ chargeId: charge.id, amount: pay, chargeDate: charge.created_at })
-        updated.push(newCharge)
-    }
+                chargeDate: charge.created_at,
+            })
+            updated.push(newCharge)
+        }
+        if (updated.length > 0) {
+            await touchCardActivity(card_id, tx)
+        }
+        return { updated, payments }
+    })
     return { data: updated, payments }
 }
 
@@ -124,17 +142,21 @@ export async function paidChargeAction(id: string) {
     try {
         const paymentAmount = charge.amount - charge.paid
 
-        const newCharge = await db.charge.update({
-            where: { id },
-            data: { paid: charge.amount },
-        })
+        const newCharge = await db.$transaction(async (tx) => {
+            const paid = await tx.charge.update({
+                where: { id },
+                data: { paid: charge.amount },
+            })
 
-        await db.paymentLog.create({
-            data: {
-                charge_id: id,
-                amount: paymentAmount,
-                status: 'success',
-            },
+            await tx.paymentLog.create({
+                data: {
+                    charge_id: id,
+                    amount: paymentAmount,
+                    status: 'success',
+                },
+            })
+            await touchCardActivity(charge.card_id, tx)
+            return paid
         })
 
         return {
@@ -184,12 +206,16 @@ export async function updateChargeAction(id: string, data: z.infer<typeof EditCh
             }
         }
 
-        const updatedCharge = await db.charge.update({
-            where: { id },
-            data: {
-                name: parsed.data.name,
-                amount: parsed.data.amount,
-            },
+        const updatedCharge = await db.$transaction(async (tx) => {
+            const updated = await tx.charge.update({
+                where: { id },
+                data: {
+                    name: parsed.data.name,
+                    amount: parsed.data.amount,
+                },
+            })
+            await touchCardActivity(charge.card_id, tx)
+            return updated
         })
 
         return {
@@ -229,8 +255,11 @@ export async function deleteChargeAction(id: string) {
     }
 
     try {
-        await db.charge.delete({
-            where: { id },
+        await db.$transaction(async (tx) => {
+            await tx.charge.delete({
+                where: { id },
+            })
+            await touchCardActivity(charge.card_id, tx)
         })
 
         return {

@@ -61,10 +61,25 @@ export async function fetchInfoAction(card_id: string) {
         ownCards: cardSections.own,
         sharedWithMeCards: cardSections.sharedWithMe,
         cardAccess: accessResult?.access ?? 'none',
+        cardVersion: card?.updated_at.toISOString() ?? null,
         charges,
         summary: await buildDailySummary(charges),
         pendingInvitations: await db.cardInvitation.count({
             where: { invitee_id: user.id, status: 'pending' },
         }),
     }
+}
+
+export async function getCardVersionAction(card_id: string) {
+    const user = await getCurrentUserAction()
+    if (!user) {
+        return null
+    }
+
+    const accessResult = await getCardAccess(card_id, user.id)
+    if (!accessResult || accessResult.access === 'none') {
+        return null
+    }
+
+    return accessResult.card.updated_at.toISOString()
 }
