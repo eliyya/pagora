@@ -27,13 +27,16 @@ export function CreateChargeDialog() {
         })),
     )
     const createCharge = useInfo((s) => s.createCharge)
+    const categories = useInfo((s) => s.categories)
     const [name, setName] = useState('')
     const [amountCents, setAmountCents] = useState(0)
+    const [categoryName, setCategoryName] = useState('')
     const [errors, setErrors] = useState<{ name?: string; amount?: string }>({})
 
     function resetForm() {
         setName('')
         setAmountCents(0)
+        setCategoryName('')
         setErrors({})
     }
 
@@ -52,7 +55,7 @@ export function CreateChargeDialog() {
         setErrors(newErrors)
         if (Object.keys(newErrors).length > 0) return
 
-        await createCharge(amountCents, trimmedName)
+        await createCharge(amountCents, trimmedName, categoryName)
         resetForm()
         handleOpenChange(false)
     }
@@ -93,6 +96,27 @@ export function CreateChargeDialog() {
                             {errors.amount && (
                                 <FieldError>{errors.amount}</FieldError>
                             )}
+                        </Field>
+                        <Field>
+                            <Label htmlFor='category-1'>Category</Label>
+                            <Input
+                                id='category-1'
+                                name='category'
+                                list='charge-categories'
+                                value={categoryName}
+                                onChange={(event) =>
+                                    setCategoryName(event.target.value)
+                                }
+                                placeholder='Breakfast, services, supplies...'
+                            />
+                            <datalist id='charge-categories'>
+                                {categories.map((category) => (
+                                    <option
+                                        key={category.id}
+                                        value={category.name}
+                                    />
+                                ))}
+                            </datalist>
                         </Field>
                     </FieldGroup>
                     <DialogFooter>

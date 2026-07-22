@@ -17,6 +17,7 @@ model Charge {
   id         String   @id @default(dbgenerated("snowflake()"))
   name       String
   card_id    String
+  category_id String?
   /// at int like 13.99 => 1399
   amount     Int
   /// at int like 13.99 => 1399
@@ -25,9 +26,28 @@ model Charge {
   updated_at DateTime @updatedAt
 
   card         Card         @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  category     ChargeCategory? @relation(fields: [category_id], references: [id], onDelete: SetNull)
   payment_logs PaymentLog[]
 
+  @@index([category_id])
   @@map("chargues")
+}
+
+model ChargeCategory {
+  id             String   @id @default(dbgenerated("snowflake()"))
+  card_id        String
+  name           String
+  /// at int like 13.99 => 1399. Zero means no budget is set.
+  monthly_budget Int      @default(0)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  card    Card     @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  charges Charge[]
+
+  @@unique([card_id, name])
+  @@index([card_id])
+  @@map("charge_categories")
 }
 
 enum CARD_BRAND {
@@ -50,6 +70,7 @@ model Card {
 
   owner   User     @relation(fields: [owner_id], references: [id], onDelete: Cascade)
   charges Charge[]
+  categories ChargeCategory[]
   members CardMember[]
   invitations CardInvitation[]
 

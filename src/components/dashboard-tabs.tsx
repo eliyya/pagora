@@ -38,6 +38,7 @@ import { PayChargesDialog } from './pay-charges-dialog'
 import { useTableContext } from './table-context'
 import { useInfo } from '@/stores/info.store'
 import { ShareCardDialog } from './share-card-dialog'
+import { BudgetCategoriesPanel } from './budget-categories-panel'
 
 export function DashboardTabs({
     openCreateDialog,
@@ -72,6 +73,7 @@ export function DashboardTabs({
                         }}
                         items={[
                             { label: 'Charges', value: 'charges' },
+                            { label: 'Budgets', value: 'budgets' },
                             { label: 'Graph', value: 'graph' },
                             { label: 'Agents', value: 'agents' },
                         ]}
@@ -86,6 +88,7 @@ export function DashboardTabs({
                         <SelectContent>
                             <SelectGroup>
                                 <SelectItem value='charges'>Charges</SelectItem>
+                                <SelectItem value='budgets'>Budgets</SelectItem>
                                 <SelectItem value='graph'>Graph</SelectItem>
                                 <SelectItem value='agents'>Agents</SelectItem>
                                 <SelectItem value='focus-documents'>
@@ -110,6 +113,7 @@ export function DashboardTabs({
                     />
                     <TabsList className='hidden **:data-[slot=badge]:size-5 **:data-[slot=badge]:rounded-full **:data-[slot=badge]:bg-muted-foreground/30 **:data-[slot=badge]:px-1 @4xl/main:flex'>
                         <TabsTrigger value='charges'>Charges</TabsTrigger>
+                        <TabsTrigger value='budgets'>Budgets</TabsTrigger>
                         <TabsTrigger value='graph'>Graph</TabsTrigger>
                         <TabsTrigger value='agents'>Agents</TabsTrigger>
                         <TabsTrigger value='focus-documents'>
@@ -196,6 +200,12 @@ export function DashboardTabs({
                     className='flex flex-col px-4 lg:px-6'
                 >
                     <ChartAreaInteractive />
+                </TabsContent>
+                <TabsContent
+                    value='budgets'
+                    className='flex flex-col px-4 lg:px-6'
+                >
+                    <BudgetCategoriesPanel />
                 </TabsContent>
                 <TabsContent
                     value='agents'

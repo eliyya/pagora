@@ -13,6 +13,7 @@ import {
     touchCardActivity,
 } from '@/lib/card-access'
 import { getMcpVersion } from '@/lib/mcp-version'
+import type { Prisma } from '@/db/generated/prisma/client'
 
 type JsonRpcId = string | number | null
 
@@ -88,6 +89,49 @@ function serializeMoney(cents: number) {
     return cents / 100
 }
 
+function serializeCharge(charge: {
+    amount: number
+    paid: number
+    category?: { id: string; name: string; monthly_budget: number } | null
+}) {
+    return {
+        ...charge,
+        amount: serializeMoney(charge.amount),
+        paid: serializeMoney(charge.paid),
+        pending: serializeMoney(charge.amount - charge.paid),
+        category: charge.category
+            ? {
+                  ...charge.category,
+                  monthly_budget: serializeMoney(charge.category.monthly_budget),
+              }
+            : null,
+    }
+}
+
+async function resolveCategoryId(
+    cardId: string,
+    categoryName: string | undefined,
+    tx: Prisma.TransactionClient,
+) {
+    const name = categoryName?.trim()
+    if (!name) return null
+
+    const category = await tx.chargeCategory.upsert({
+        where: {
+            card_id_name: {
+                card_id: cardId,
+                name,
+            },
+        },
+        update: {},
+        create: {
+            card_id: cardId,
+            name,
+        },
+    })
+    return category.id
+}
+
 async function listCards(token: AgentTokenRecord) {
     assertAgentScope(token, 'cards:read')
     const sections = await listCardsForUser(token.user_id)
@@ -123,16 +167,76 @@ async function listCharges(
                 ? undefined
                 : { id: { in: readableCards.all.map((card) => card.id) } },
         },
+        include: { category: true },
         orderBy: { created_at: 'asc' },
     })
 
     return textContent({
-        charges: charges.map((charge) => ({
-            ...charge,
-            amount: serializeMoney(charge.amount),
-            paid: serializeMoney(charge.paid),
-            pending: serializeMoney(charge.amount - charge.paid),
+        charges: charges.map(serializeCharge),
+    })
+}
+
+async function listCategories(
+    token: AgentTokenRecord,
+    args: Record<string, unknown>,
+) {
+    assertAgentScope(token, 'charges:read')
+    const cardId = getString(args, 'card_id')
+    await assertCardReadable(cardId, token.user_id)
+
+    const categories = await db.chargeCategory.findMany({
+        where: { card_id: cardId },
+        orderBy: { name: 'asc' },
+    })
+
+    return textContent({
+        categories: categories.map((category) => ({
+            ...category,
+            monthly_budget: serializeMoney(category.monthly_budget),
         })),
+    })
+}
+
+async function createCategory(
+    token: AgentTokenRecord,
+    args: Record<string, unknown>,
+) {
+    assertAgentScope(token, 'charges:write')
+    const cardId = getString(args, 'card_id')
+    const name = getString(args, 'name')
+    const monthlyBudget =
+        args.monthly_budget === undefined
+            ? 0
+            : getMoneyAmount(args, 'monthly_budget')
+
+    await assertCardWritable(cardId, token.user_id)
+
+    const category = await db.$transaction(async (tx) => {
+        const result = await tx.chargeCategory.upsert({
+            where: {
+                card_id_name: {
+                    card_id: cardId,
+                    name,
+                },
+            },
+            update: {
+                monthly_budget: monthlyBudget,
+            },
+            create: {
+                card_id: cardId,
+                name,
+                monthly_budget: monthlyBudget,
+            },
+        })
+        await touchCardActivity(cardId, tx)
+        return result
+    })
+
+    return textContent({
+        category: {
+            ...category,
+            monthly_budget: serializeMoney(category.monthly_budget),
+        },
     })
 }
 
@@ -144,16 +248,23 @@ async function createCharge(
     const cardId = getString(args, 'card_id')
     const name = getString(args, 'name')
     const amount = getMoneyAmount(args, 'amount')
+    const categoryName =
+        typeof args.category === 'string' && args.category.trim().length > 0
+            ? args.category.trim()
+            : undefined
 
     await assertCardWritable(cardId, token.user_id)
 
     const charge = await db.$transaction(async (tx) => {
+        const category_id = await resolveCategoryId(cardId, categoryName, tx)
         const created = await tx.charge.create({
             data: {
                 card_id: cardId,
                 name,
                 amount,
+                category_id,
             },
+            include: { category: true },
         })
         await touchCardActivity(cardId, tx)
         return created
@@ -161,10 +272,7 @@ async function createCharge(
 
     return textContent({
         charge: {
-            ...charge,
-            amount: serializeMoney(charge.amount),
-            paid: serializeMoney(charge.paid),
-            pending: serializeMoney(charge.amount - charge.paid),
+            ...serializeCharge(charge),
         },
     })
 }
@@ -189,6 +297,7 @@ async function payCharge(
         const paid = await tx.charge.update({
             where: { id: chargeId },
             data: { paid: charge.amount },
+            include: { category: true },
         })
         await tx.paymentLog.create({
             data: {
@@ -203,10 +312,7 @@ async function payCharge(
 
     return textContent({
         charge: {
-            ...updated,
-            amount: serializeMoney(updated.amount),
-            paid: serializeMoney(updated.paid),
-            pending: serializeMoney(updated.amount - updated.paid),
+            ...serializeCharge(updated),
         },
         payment_amount: serializeMoney(paymentAmount),
     })
@@ -284,6 +390,7 @@ async function summarizeCard(
 
     const charges = await db.charge.findMany({
         where: { card_id: cardId },
+        include: { category: true },
         orderBy: { created_at: 'asc' },
     })
 
@@ -292,6 +399,29 @@ async function summarizeCard(
     const pendingCharges = charges.filter(
         (charge) => charge.amount > charge.paid,
     )
+    const categories = await db.chargeCategory.findMany({
+        where: { card_id: cardId },
+        orderBy: { name: 'asc' },
+    })
+    const byCategory = categories.map((category) => {
+        const categoryCharges = charges.filter(
+            (charge) => charge.category_id === category.id,
+        )
+        const spent = categoryCharges.reduce(
+            (sum, charge) => sum + charge.amount,
+            0,
+        )
+        return {
+            id: category.id,
+            name: category.name,
+            monthly_budget: serializeMoney(category.monthly_budget),
+            spent: serializeMoney(spent),
+            remaining:
+                category.monthly_budget > 0
+                    ? serializeMoney(category.monthly_budget - spent)
+                    : null,
+        }
+    })
 
     return textContent({
         card: {
@@ -310,11 +440,13 @@ async function summarizeCard(
         pending_charges: pendingCharges.map((charge) => ({
             id: charge.id,
             name: charge.name,
+            category: charge.category?.name ?? null,
             amount: serializeMoney(charge.amount),
             paid: serializeMoney(charge.paid),
             pending: serializeMoney(charge.amount - charge.paid),
             created_at: charge.created_at,
         })),
+        categories: byCategory,
     })
 }
 
@@ -358,14 +490,43 @@ const tools = [
         },
     },
     {
+        name: 'list_categories',
+        description: 'List charge categories and monthly budgets for a card.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                card_id: { type: 'string' },
+            },
+            required: ['card_id'],
+            additionalProperties: false,
+        },
+    },
+    {
+        name: 'create_category',
+        description:
+            'Create or update a charge category with an optional monthly budget. Amount is expressed in pesos.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                card_id: { type: 'string' },
+                name: { type: 'string' },
+                monthly_budget: { type: 'number' },
+            },
+            required: ['card_id', 'name'],
+            additionalProperties: false,
+        },
+    },
+    {
         name: 'create_charge',
-        description: 'Create a charge on a card. Amount is expressed in pesos.',
+        description:
+            'Create a charge on a card. Amount is expressed in pesos. Optional category creates/reuses a category.',
         inputSchema: {
             type: 'object',
             properties: {
                 card_id: { type: 'string' },
                 name: { type: 'string' },
                 amount: { type: 'number' },
+                category: { type: 'string' },
             },
             required: ['card_id', 'name', 'amount'],
             additionalProperties: false,
@@ -424,6 +585,10 @@ async function callTool(
             return await listCards(token)
         case 'list_charges':
             return await listCharges(token, args)
+        case 'list_categories':
+            return await listCategories(token, args)
+        case 'create_category':
+            return await createCategory(token, args)
         case 'create_charge':
             return await createCharge(token, args)
         case 'pay_charge':

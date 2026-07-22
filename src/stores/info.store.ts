@@ -9,7 +9,12 @@ import {
     deleteChargeAction,
 } from '@/actions/chargue.action'
 import { getCardSectionsAction } from '@/actions/card.action'
-import { Card, Charge, User } from '@/db/generated/prisma/browser'
+import { Card, Charge, ChargeCategory, User } from '@/db/generated/prisma/browser'
+import {
+    createChargeCategoryAction,
+    deleteChargeCategoryAction,
+    updateChargeCategoryAction,
+} from '@/actions/charge-category.action'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
@@ -26,6 +31,9 @@ type CardItem = Card & {
 type SharedByMeCard = Awaited<
     ReturnType<typeof getCardSectionsAction>
 >['sharedByMe'][number]
+export type ChargeWithCategory = Charge & {
+    category: ChargeCategory | null
+}
 
 interface InfoStore {
     user: User | null
@@ -37,16 +45,20 @@ interface InfoStore {
     cardAccess: CardAccessLevel
     cardVersion: string | null
     pendingInvitations: number
-    charges: Charge[]
+    charges: ChargeWithCategory[]
+    categories: ChargeCategory[]
     summary: DailySummary[]
     pageSize: number
     fetch(card_id: string): Promise<void>
     refreshCards(): Promise<void>
-    createCharge(amount: number, name: string): Promise<void>
-    updateCharge(id: string, name: string, amount: number): Promise<void>
+    createCharge(amount: number, name: string, categoryName?: string): Promise<void>
+    updateCharge(id: string, name: string, amount: number, categoryName?: string): Promise<void>
     deleteCharge(id: string): Promise<void>
     paidCharge(id: string): Promise<void>
     batchPayCharges(amount: number): Promise<void>
+    createCategory(name: string, monthlyBudget: number): Promise<void>
+    updateCategory(id: string, name: string, monthlyBudget: number): Promise<void>
+    deleteCategory(id: string): Promise<void>
     setPageSize(size: number): void
 }
 
@@ -63,6 +75,7 @@ export const useInfo = create<InfoStore>()(
             cardVersion: null,
             pendingInvitations: 0,
             charges: [],
+            categories: [],
             summary: [],
             pageSize: 10,
             fetch: async (card_id) => {
@@ -78,6 +91,7 @@ export const useInfo = create<InfoStore>()(
                     cardVersion: data.cardVersion,
                     pendingInvitations: data.pendingInvitations,
                     charges: data.charges,
+                    categories: data.categories,
                     summary: data.summary,
                 })
                 await get().refreshCards()
@@ -92,13 +106,26 @@ export const useInfo = create<InfoStore>()(
                     pendingInvitations: sections.pendingInvitations,
                 })
             },
-            createCharge: async (amount, name) => {
+            createCharge: async (amount, name, categoryName) => {
                 const access = get().cardAccess
                 if (access !== 'owner' && access !== 'write') return
                 const card_id = get().card?.id
                 if (!card_id) return
-                const charge = await createChargue({ amount, name, card_id })
+                const charge = await createChargue({
+                    amount,
+                    name,
+                    card_id,
+                    category_name: categoryName,
+                })
                 const charges = [charge, ...get().charges]
+                const categories = charge.category
+                    ? [
+                          charge.category,
+                          ...get().categories.filter(
+                              (category) => category.id !== charge.category?.id,
+                          ),
+                      ].sort((a, b) => a.name.localeCompare(b.name))
+                    : get().categories
                 const oldSummary = get().summary
                 const map = new Map(oldSummary.map((s) => [s.date, { ...s }]))
                 for (const c of charges) {
@@ -114,18 +141,30 @@ export const useInfo = create<InfoStore>()(
                 const summary = Array.from(map.values()).sort((a, b) =>
                     a.date.localeCompare(b.date),
                 )
-                set({ charges, summary })
+                set({ charges, categories, summary })
             },
-            updateCharge: async (id, name, amount) => {
+            updateCharge: async (id, name, amount, categoryName) => {
                 const access = get().cardAccess
                 if (access !== 'owner' && access !== 'write') return
-                const res = await updateChargeAction(id, { name, amount })
+                const res = await updateChargeAction(id, {
+                    name,
+                    amount,
+                    category_name: categoryName,
+                })
                 if (!res.data) return
                 const updated = res.data
                 const charges = get().charges.map((c) =>
                     c.id === updated.id ? updated : c,
                 )
-                set({ charges })
+                const categories = updated.category
+                    ? [
+                          updated.category,
+                          ...get().categories.filter(
+                              (category) => category.id !== updated.category?.id,
+                          ),
+                      ].sort((a, b) => a.name.localeCompare(b.name))
+                    : get().categories
+                set({ charges, categories })
             },
             deleteCharge: async (id) => {
                 const access = get().cardAccess
@@ -204,6 +243,54 @@ export const useInfo = create<InfoStore>()(
                     summary.sort((a, b) => a.date.localeCompare(b.date))
                 }
                 set({ charges, summary })
+            },
+            createCategory: async (name, monthlyBudget) => {
+                const access = get().cardAccess
+                if (access !== 'owner' && access !== 'write') return
+                const card_id = get().card?.id
+                if (!card_id) return
+                const res = await createChargeCategoryAction({
+                    card_id,
+                    name,
+                    monthly_budget: monthlyBudget,
+                })
+                if (!res.data) return
+                const categories = [
+                    res.data,
+                    ...get().categories.filter((c) => c.id !== res.data?.id),
+                ].sort((a, b) => a.name.localeCompare(b.name))
+                set({ categories })
+            },
+            updateCategory: async (id, name, monthlyBudget) => {
+                const access = get().cardAccess
+                if (access !== 'owner' && access !== 'write') return
+                const res = await updateChargeCategoryAction(id, {
+                    name,
+                    monthly_budget: monthlyBudget,
+                })
+                if (!res.data) return
+                const categories = get()
+                    .categories.map((c) => (c.id === id ? res.data : c))
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                const charges = get().charges.map((charge) =>
+                    charge.category?.id === id
+                        ? { ...charge, category: res.data }
+                        : charge,
+                )
+                set({ categories, charges })
+            },
+            deleteCategory: async (id) => {
+                const access = get().cardAccess
+                if (access !== 'owner' && access !== 'write') return
+                const res = await deleteChargeCategoryAction(id)
+                if (!res.data) return
+                const categories = get().categories.filter((c) => c.id !== id)
+                const charges = get().charges.map((charge) =>
+                    charge.category?.id === id
+                        ? { ...charge, category: null, category_id: null }
+                        : charge,
+                )
+                set({ categories, charges })
             },
             setPageSize: (size: number) => set({ pageSize: size }),
         }),

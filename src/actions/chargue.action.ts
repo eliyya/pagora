@@ -9,12 +9,43 @@ import {
 import { EditChargeSchema } from '@/schemas/edit-charge.schema'
 import z from 'zod'
 import { getCurrentUserAction } from './users.action'
-import { Charge } from '@/db/generated/prisma/browser'
+import { Charge, ChargeCategory } from '@/db/generated/prisma/browser'
 import { assertCardWritable, touchCardActivity } from '@/lib/card-access'
+import type { Prisma } from '@/db/generated/prisma/client'
+
+type ChargeWithCategory = Charge & {
+    category: ChargeCategory | null
+}
 
 interface CreateChargueProps extends CreateCharge {
     card_id: string
 }
+
+async function resolveCategoryId(
+    tx: Prisma.TransactionClient,
+    card_id: string,
+    categoryName?: string,
+) {
+    const name = categoryName?.trim()
+    if (!name) return null
+
+    const category = await tx.chargeCategory.upsert({
+        where: {
+            card_id_name: {
+                card_id,
+                name,
+            },
+        },
+        update: {},
+        create: {
+            card_id,
+            name,
+        },
+    })
+
+    return category.id
+}
+
 export async function createChargue(data: CreateChargueProps) {
     const user = await getCurrentUserAction()
     if (!user) {
@@ -26,8 +57,19 @@ export async function createChargue(data: CreateChargueProps) {
     }
     await assertCardWritable(parsed.data.card_id, user.id)
     const charge = await db.$transaction(async (tx) => {
+        const category_id = await resolveCategoryId(
+            tx,
+            parsed.data.card_id,
+            parsed.data.category_name,
+        )
         const created = await tx.charge.create({
-            data: parsed.data,
+            data: {
+                card_id: parsed.data.card_id,
+                name: parsed.data.name,
+                amount: parsed.data.amount,
+                category_id,
+            },
+            include: { category: true },
         })
         await touchCardActivity(parsed.data.card_id, tx)
         return created
@@ -77,7 +119,7 @@ export async function batchPayChargesAction(card_id: string, amount: number) {
             where: { card_id },
             orderBy: { created_at: 'asc' },
         })
-        const updated: Charge[] = []
+        const updated: ChargeWithCategory[] = []
         const payments: Array<{
             chargeId: string
             amount: number
@@ -93,6 +135,7 @@ export async function batchPayChargesAction(card_id: string, amount: number) {
             const newCharge = await tx.charge.update({
                 where: { id: charge.id },
                 data: { paid: charge.paid + pay },
+                include: { category: true },
             })
             await tx.paymentLog.create({
                 data: {
@@ -207,12 +250,19 @@ export async function updateChargeAction(id: string, data: z.infer<typeof EditCh
         }
 
         const updatedCharge = await db.$transaction(async (tx) => {
+            const category_id = await resolveCategoryId(
+                tx,
+                charge.card_id,
+                parsed.data.category_name,
+            )
             const updated = await tx.charge.update({
                 where: { id },
                 data: {
                     name: parsed.data.name,
                     amount: parsed.data.amount,
+                    category_id,
                 },
+                include: { category: true },
             })
             await touchCardActivity(charge.card_id, tx)
             return updated
