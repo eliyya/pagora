@@ -30,7 +30,6 @@ import { DataTableColumnHeader } from './data-table-column-header'
 import { useCreateDialogState } from '@/stores/charges.store'
 import { useEditChargeDialogState } from '@/stores/edit-charge.store'
 import { useDeleteChargeDialogState } from '@/stores/delete-charge.store'
-import { Charge } from '@/db/generated/prisma/browser'
 import { CreateChargeDialog } from './create-charge-dialog'
 import { EditChargeDialog } from './edit-charge-dialog'
 import { DeleteChargeDialog } from './delete-charge-dialog'
@@ -41,6 +40,7 @@ import { useShallow } from 'zustand/shallow'
 import { DashboardTabs } from './dashboard-tabs'
 import { TableProvider } from './table-context'
 import { getCardVersionAction } from '@/actions/info.action'
+import type { ChargeWithCategory } from '@/stores/info.store'
 
 export const schema = z.object({
     id: z.number(),
@@ -52,7 +52,7 @@ export const schema = z.object({
     reviewer: z.string(),
 })
 
-const columns: ColumnDef<Charge>[] = [
+const columns: ColumnDef<ChargeWithCategory>[] = [
     // {
     //   id: "drag",
     //   header: () => null,
@@ -140,6 +140,18 @@ const columns: ColumnDef<Charge>[] = [
         //         />
         //     </form>
         // ),
+    },
+    {
+        id: 'category',
+        accessorFn: (row) => row.category?.name ?? 'Uncategorized',
+        header: ({ column }) => (
+            <DataTableColumnHeader column={column} title='Category' />
+        ),
+        cell: ({ row }) => (
+            <Badge variant='secondary' className='whitespace-nowrap'>
+                {row.original.category?.name ?? 'Uncategorized'}
+            </Badge>
+        ),
     },
     {
         accessorKey: 'created_at',

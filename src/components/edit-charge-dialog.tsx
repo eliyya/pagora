@@ -18,7 +18,7 @@ import { useEditChargeDialogState } from '@/stores/edit-charge.store'
 import { useShallow } from 'zustand/shallow'
 import { useInfo } from '@/stores/info.store'
 import { CurrencyInput } from './currency-input'
-import type { Charge } from '@/db/generated/prisma/browser'
+import type { ChargeWithCategory } from '@/stores/info.store'
 
 export function EditChargeDialog() {
     const { open, charge, toggle } = useEditChargeDialogState(
@@ -50,12 +50,19 @@ function EditChargeForm({
     onSubmit,
     onClose,
 }: {
-    charge: Charge
-    onSubmit: (id: string, name: string, amount: number) => Promise<void>
+    charge: ChargeWithCategory
+    onSubmit: (
+        id: string,
+        name: string,
+        amount: number,
+        categoryName?: string,
+    ) => Promise<void>
     onClose: () => void
 }) {
     const [name, setName] = useState(charge.name)
     const [amountCents, setAmountCents] = useState(charge.amount)
+    const [categoryName, setCategoryName] = useState(charge.category?.name ?? '')
+    const categories = useInfo((s) => s.categories)
     const [errors, setErrors] = useState<{ name?: string; amount?: string }>({})
 
     async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -69,7 +76,7 @@ function EditChargeForm({
         setErrors(newErrors)
         if (Object.keys(newErrors).length > 0) return
 
-        await onSubmit(charge.id, trimmedName, amountCents)
+        await onSubmit(charge.id, trimmedName, amountCents, categoryName)
         setErrors({})
         onClose()
     }
@@ -100,6 +107,24 @@ function EditChargeForm({
                         onValueCentsChange={setAmountCents}
                     />
                     {errors.amount && <FieldError>{errors.amount}</FieldError>}
+                </Field>
+                <Field>
+                    <Label htmlFor='edit-category'>Category</Label>
+                    <Input
+                        id='edit-category'
+                        name='category'
+                        list='edit-charge-categories'
+                        value={categoryName}
+                        onChange={(event) =>
+                            setCategoryName(event.target.value)
+                        }
+                        placeholder='Breakfast, services, supplies...'
+                    />
+                    <datalist id='edit-charge-categories'>
+                        {categories.map((category) => (
+                            <option key={category.id} value={category.name} />
+                        ))}
+                    </datalist>
                 </Field>
             </FieldGroup>
             <DialogFooter>

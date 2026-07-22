@@ -7,6 +7,7 @@ export const CreateChargeSchema = z.object({
         .positive('Amount must be greater than zero'),
     name: z.string().trim().min(1),
     card_id: z.string(),
+    category_name: z.string().trim().max(60).optional().or(z.literal('')),
 })
 
 export type CreateCharge = z.infer<typeof CreateChargeSchema>
@@ -15,6 +16,7 @@ export const DEFAULT_CREATE_CHARGE_VALUE: CreateCharge = {
     amount: 50,
     name: 'Cafeteria',
     card_id: '',
+    category_name: '',
 }
 
 export const FormChargeSchema = CreateChargeSchema.extend({

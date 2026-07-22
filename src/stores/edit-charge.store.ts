@@ -1,13 +1,17 @@
 'use client'
 
 import { create } from 'zustand'
-import { Charge } from '@/db/generated/prisma/browser'
+import { Charge, ChargeCategory } from '@/db/generated/prisma/browser'
+
+type ChargeWithCategory = Charge & {
+    category: ChargeCategory | null
+}
 
 interface EditChargeDialogState {
     open: boolean
-    charge: Charge | null
+    charge: ChargeWithCategory | null
     toggle(value?: boolean): void
-    setCharge(charge: Charge | null): void
+    setCharge(charge: ChargeWithCategory | null): void
 }
 
 export const useEditChargeDialogState = create<EditChargeDialogState>((set) => ({
