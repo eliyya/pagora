@@ -10,8 +10,12 @@ import {
     assertCardReadable,
     assertCardWritable,
     listCardsForUser,
-    touchCardActivity,
 } from '@/lib/card-access'
+import {
+    beginCardChange,
+    recordCardChanges,
+    type CardChangeInput,
+} from '@/lib/card-changes'
 import { getMcpVersion } from '@/lib/mcp-version'
 import type { Prisma } from '@/db/generated/prisma/client'
 
@@ -212,6 +216,7 @@ async function createCategory(
     await assertCardWritable(cardId, token.user_id)
 
     const category = await db.$transaction(async (tx) => {
+        const syncVersion = await beginCardChange(cardId, tx)
         const result = await tx.chargeCategory.upsert({
             where: {
                 card_id_name: {
@@ -228,7 +233,18 @@ async function createCategory(
                 monthly_budget: monthlyBudget,
             },
         })
-        await touchCardActivity(cardId, tx)
+        await recordCardChanges(
+            cardId,
+            syncVersion,
+            [
+                {
+                    entity: 'category',
+                    entityId: result.id,
+                    operation: 'upsert',
+                },
+            ],
+            tx,
+        )
         return result
     })
 
@@ -256,6 +272,7 @@ async function createCharge(
     await assertCardWritable(cardId, token.user_id)
 
     const charge = await db.$transaction(async (tx) => {
+        const syncVersion = await beginCardChange(cardId, tx)
         const category_id = await resolveCategoryId(cardId, categoryName, tx)
         const created = await tx.charge.create({
             data: {
@@ -263,10 +280,25 @@ async function createCharge(
                 name,
                 amount,
                 category_id,
+                revision: syncVersion,
             },
             include: { category: true },
         })
-        await touchCardActivity(cardId, tx)
+        const changes: CardChangeInput[] = [
+            {
+                entity: 'charge',
+                entityId: created.id,
+                operation: 'upsert',
+            },
+        ]
+        if (category_id) {
+            changes.unshift({
+                entity: 'category',
+                entityId: category_id,
+                operation: 'upsert',
+            })
+        }
+        await recordCardChanges(cardId, syncVersion, changes, tx)
         return created
     })
 
@@ -288,33 +320,59 @@ async function payCharge(
     if (!charge) throw new Error('charge not found')
     await assertCardWritable(charge.card_id, token.user_id)
 
-    const paymentAmount = charge.amount - charge.paid
-    if (paymentAmount <= 0) {
-        return textContent({ charge_id: chargeId, payment_amount: 0 })
-    }
-
-    const updated = await db.$transaction(async (tx) => {
-        const paid = await tx.charge.update({
+    const result = await db.$transaction(async (tx) => {
+        const syncVersion = await beginCardChange(charge.card_id, tx)
+        const current = await tx.charge.findUnique({
             where: { id: chargeId },
-            data: { paid: charge.amount },
             include: { category: true },
         })
-        await tx.paymentLog.create({
+        if (!current) throw new Error('charge not found')
+
+        const paymentAmount = current.amount - current.paid
+        if (paymentAmount <= 0) {
+            return { charge: current, paymentAmount: 0 }
+        }
+
+        const paid = await tx.charge.update({
+            where: { id: chargeId },
+            data: {
+                paid: current.amount,
+                revision: syncVersion,
+            },
+            include: { category: true },
+        })
+        const payment = await tx.paymentLog.create({
             data: {
                 charge_id: chargeId,
                 amount: paymentAmount,
                 status: 'success',
             },
         })
-        await touchCardActivity(charge.card_id, tx)
-        return paid
+        await recordCardChanges(
+            charge.card_id,
+            syncVersion,
+            [
+                {
+                    entity: 'charge',
+                    entityId: paid.id,
+                    operation: 'upsert',
+                },
+                {
+                    entity: 'payment',
+                    entityId: payment.id,
+                    operation: 'upsert',
+                },
+            ],
+            tx,
+        )
+        return { charge: paid, paymentAmount }
     })
 
     return textContent({
         charge: {
-            ...serializeCharge(updated),
+            ...serializeCharge(result.charge),
         },
-        payment_amount: serializeMoney(paymentAmount),
+        payment_amount: serializeMoney(result.paymentAmount),
     })
 }
 
@@ -324,11 +382,12 @@ async function payCardAmount(
 ) {
     assertAgentScope(token, 'payments:write')
     const cardId = getString(args, 'card_id')
-    let remaining = getMoneyAmount(args, 'amount')
+    const requestedAmount = getMoneyAmount(args, 'amount')
 
     await assertCardWritable(cardId, token.user_id)
 
-    const payments = await db.$transaction(async (tx) => {
+    const result = await db.$transaction(async (tx) => {
+        const syncVersion = await beginCardChange(cardId, tx)
         const charges = await tx.charge.findMany({
             where: { card_id: cardId },
             orderBy: { created_at: 'asc' },
@@ -338,6 +397,8 @@ async function payCardAmount(
             charge_name: string
             amount: number
         }> = []
+        const changes: CardChangeInput[] = []
+        let remaining = requestedAmount
 
         for (const charge of charges) {
             if (remaining <= 0) break
@@ -349,15 +410,30 @@ async function payCardAmount(
 
             await tx.charge.update({
                 where: { id: charge.id },
-                data: { paid: charge.paid + amount },
+                data: {
+                    paid: charge.paid + amount,
+                    revision: syncVersion,
+                },
             })
-            await tx.paymentLog.create({
+            const payment = await tx.paymentLog.create({
                 data: {
                     charge_id: charge.id,
                     amount,
                     status: 'success',
                 },
             })
+            changes.push(
+                {
+                    entity: 'charge',
+                    entityId: charge.id,
+                    operation: 'upsert',
+                },
+                {
+                    entity: 'payment',
+                    entityId: payment.id,
+                    operation: 'upsert',
+                },
+            )
 
             applied.push({
                 charge_id: charge.id,
@@ -366,16 +442,21 @@ async function payCardAmount(
             })
         }
 
-        if (applied.length > 0) {
-            await touchCardActivity(cardId, tx)
+        if (changes.length > 0) {
+            await recordCardChanges(
+                cardId,
+                syncVersion,
+                changes,
+                tx,
+            )
         }
 
-        return applied
+        return { applied, remaining }
     })
 
     return textContent({
-        payments,
-        unapplied_amount: serializeMoney(remaining),
+        payments: result.applied,
+        unapplied_amount: serializeMoney(result.remaining),
     })
 }
 

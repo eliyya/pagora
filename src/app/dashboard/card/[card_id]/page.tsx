@@ -36,7 +36,7 @@ async function Cached({
         <DashboardMainLayout title={result.card.name}>
             <SectionCards />
             <Suspense>
-                <ChargesTable />
+                <ChargesTable cardId={card_id} userId={user.id} />
             </Suspense>
             <RegisterCardDialog />
         </DashboardMainLayout>

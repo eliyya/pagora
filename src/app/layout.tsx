@@ -1,10 +1,11 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono, Inter } from 'next/font/google'
 import './globals.css'
 import { cn } from '@/lib/utils'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
+import { PwaProvider } from '@/components/pwa-provider'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' })
 
@@ -19,8 +20,31 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-    title: 'Pagora',
+    applicationName: 'Pagora',
+    title: {
+        default: 'Pagora',
+        template: '%s · Pagora',
+    },
     description: 'Administra tus tarjetas',
+    icons: {
+        icon: [
+            { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+            { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+        ],
+        apple: [
+            { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+        ],
+    },
+    appleWebApp: {
+        capable: true,
+        statusBarStyle: 'black-translucent',
+        title: 'Pagora',
+    },
+    formatDetection: { telephone: false },
+}
+
+export const viewport: Viewport = {
+    themeColor: '#09090b',
 }
 
 export default function RootLayout({
@@ -48,8 +72,10 @@ export default function RootLayout({
                     enableSystem
                     disableTransitionOnChange
                 >
-                    <TooltipProvider>{children}</TooltipProvider>
-                    <Toaster />
+                    <PwaProvider>
+                        <TooltipProvider>{children}</TooltipProvider>
+                        <Toaster />
+                    </PwaProvider>
                 </ThemeProvider>
             </body>
         </html>

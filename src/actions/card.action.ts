@@ -15,7 +15,7 @@ import {
     normalizeCardPermission,
 } from '@/lib/card-access'
 
-export async function createCardAction({
+async function createCard({
     brand,
     closing_day,
     credit_limit,
@@ -70,7 +70,7 @@ export async function createCardFormAction(
         }
     }
 
-    const newCard = await createCardAction({
+    const newCard = await createCard({
         ...parsed.data,
         owner_id: user.id,
     })

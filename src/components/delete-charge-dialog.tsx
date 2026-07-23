@@ -12,6 +12,7 @@ import {
 import { useDeleteChargeDialogState } from '@/stores/delete-charge.store'
 import { useShallow } from 'zustand/shallow'
 import { useInfo } from '@/stores/info.store'
+import { useState } from 'react'
 
 export function DeleteChargeDialog() {
     const { open, chargeId, toggle } = useDeleteChargeDialogState(
@@ -22,14 +23,20 @@ export function DeleteChargeDialog() {
         })),
     )
     const deleteCharge = useInfo((s) => s.deleteCharge)
+    const [deleting, setDeleting] = useState(false)
     const charge = useInfo((s) =>
         s.charges.find((c) => c.id === chargeId),
     )
 
     async function handleConfirm() {
-        if (!chargeId) return
-        await deleteCharge(chargeId)
-        toggle(false)
+        if (!chargeId || deleting) return
+        setDeleting(true)
+        try {
+            const deleted = await deleteCharge(chargeId)
+            if (deleted) toggle(false)
+        } finally {
+            setDeleting(false)
+        }
     }
 
     return (
@@ -46,12 +53,15 @@ export function DeleteChargeDialog() {
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className='flex gap-2'>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel disabled={deleting}>
+                        Cancel
+                    </AlertDialogCancel>
                     <AlertDialogAction
                         onClick={handleConfirm}
+                        disabled={deleting}
                         className='bg-destructive text-destructive-foreground hover:bg-destructive/90'
                     >
-                        Delete
+                        {deleting ? 'Saving locally…' : 'Delete'}
                     </AlertDialogAction>
                 </div>
             </AlertDialogContent>

@@ -12,20 +12,20 @@ datasource db {
   provider = "postgresql"
 }
 
-
 model Charge {
-  id         String   @id @default(dbgenerated("snowflake()"))
-  name       String
-  card_id    String
+  id          String   @id @default(dbgenerated("snowflake()"))
+  name        String
+  card_id     String
   category_id String?
   /// at int like 13.99 => 1399
-  amount     Int
+  amount      Int
   /// at int like 13.99 => 1399
-  paid       Int      @default(0)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  paid        Int      @default(0)
+  revision    Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
-  card         Card         @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  card         Card            @relation(fields: [card_id], references: [id], onDelete: Cascade)
   category     ChargeCategory? @relation(fields: [category_id], references: [id], onDelete: SetNull)
   payment_logs PaymentLog[]
 
@@ -67,15 +67,50 @@ model Card {
   bank         String?
   brand        CARD_BRAND @default(mastercard)
   updated_at   DateTime   @default(now()) @updatedAt
+  sync_version Int        @default(0)
 
-  owner   User     @relation(fields: [owner_id], references: [id], onDelete: Cascade)
-  charges Charge[]
-  categories ChargeCategory[]
-  members CardMember[]
+  owner       User              @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  charges     Charge[]
+  categories  ChargeCategory[]
+  changes     CardChange[]
+  mutations   AppliedMutation[]
+  members     CardMember[]
   invitations CardInvitation[]
 
   @@unique([owner_id, name])
   @@map("cards")
+}
+
+model CardChange {
+  id         BigInt   @id @default(autoincrement())
+  card_id    String
+  version    Int
+  entity     String
+  entity_id  String
+  operation  String
+  created_at DateTime @default(now())
+
+  card Card @relation(fields: [card_id], references: [id], onDelete: Cascade)
+
+  @@index([card_id, version])
+  @@map("card_changes")
+}
+
+model AppliedMutation {
+  mutation_id  String
+  card_id      String
+  user_id      String
+  request_hash String
+  result       Json
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now()) @updatedAt
+
+  card Card @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@id([card_id, mutation_id])
+  @@index([user_id])
+  @@map("applied_mutations")
 }
 
 enum CardPermission {
@@ -134,14 +169,15 @@ model User {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  sessions     Session[]
-  accounts     Account[]
-  cards        Card[]
-  cardMembers  CardMember[]
-  sentCardInvitations CardInvitation[] @relation("CardInvitationInviter")
-  receivedCardInvitations CardInvitation[] @relation("CardInvitationInvitee")
-  agent_tokens AgentToken[]
-  shareQuotas share_quota[]
+  sessions                Session[]
+  accounts                Account[]
+  cards                   Card[]
+  cardMembers             CardMember[]
+  sentCardInvitations     CardInvitation[]  @relation("CardInvitationInviter")
+  receivedCardInvitations CardInvitation[]  @relation("CardInvitationInvitee")
+  appliedMutations        AppliedMutation[]
+  agent_tokens            AgentToken[]
+  shareQuotas             share_quota[]
 
   @@map("users")
 }
@@ -221,7 +257,7 @@ model AgentToken {
 model Plan {
   id         String   @id @default(dbgenerated("snowflake()"))
   name       String
-  price      Int      /// at int like 13.99 => 1399
+  price      Int /// at int like 13.99 => 1399
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 }

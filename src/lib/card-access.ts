@@ -1,5 +1,9 @@
 import { db } from '@/db/prisma'
-import type { Card, CardPermission } from '@/db/generated/prisma/client'
+import type {
+    Card,
+    CardPermission,
+    Prisma,
+} from '@/db/generated/prisma/client'
 
 export type CardAccessLevel = 'none' | 'read' | 'write' | 'owner'
 
@@ -24,8 +28,14 @@ export function normalizeCardPermission(permission: unknown): CardPermission {
     return permission === 'write' ? 'write' : 'read'
 }
 
-export async function getCardAccess(cardId: string, userId: string) {
-    const card = await db.card.findFirst({
+type CardAccessClient = Pick<Prisma.TransactionClient, 'card'>
+
+export async function getCardAccess(
+    cardId: string,
+    userId: string,
+    client: CardAccessClient = db,
+) {
+    const card = await client.card.findFirst({
         where: { id: cardId },
         include: {
             owner: {
@@ -78,25 +88,6 @@ export async function assertCardOwner(cardId: string, userId: string) {
         throw new Error('card not found')
     }
     return result
-}
-
-type CardActivityClient = {
-    card: {
-        update(args: {
-            where: { id: string }
-            data: { updated_at: Date }
-        }): Promise<unknown>
-    }
-}
-
-export async function touchCardActivity(
-    cardId: string,
-    client: CardActivityClient = db,
-) {
-    await client.card.update({
-        where: { id: cardId },
-        data: { updated_at: new Date() },
-    })
 }
 
 export async function listCardsForUser(userId: string) {

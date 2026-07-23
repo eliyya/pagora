@@ -35,11 +35,9 @@ import { EditChargeDialog } from './edit-charge-dialog'
 import { DeleteChargeDialog } from './delete-charge-dialog'
 import { useEffect, useState } from 'react'
 import { useInfo } from '@/stores/info.store'
-import { useParams } from 'next/navigation'
 import { useShallow } from 'zustand/shallow'
 import { DashboardTabs } from './dashboard-tabs'
 import { TableProvider } from './table-context'
-import { getCardVersionAction } from '@/actions/info.action'
 import type { ChargeWithCategory } from '@/stores/info.store'
 
 export const schema = z.object({
@@ -51,6 +49,73 @@ export const schema = z.object({
     limit: z.string(),
     reviewer: z.string(),
 })
+
+function ChargeActions({ charge }: { charge: ChargeWithCategory }) {
+    const cardAccess = useInfo((state) => state.cardAccess)
+    const pendingMutationCount = useInfo(
+        (state) => state.pendingMutationCount,
+    )
+    const conflictCount = useInfo((state) => state.syncConflicts.length)
+    const syncStatus = useInfo((state) => state.syncStatus)
+    const canWrite = cardAccess === 'owner' || cardAccess === 'write'
+    const canPay =
+        canWrite &&
+        pendingMutationCount === 0 &&
+        conflictCount === 0 &&
+        syncStatus !== 'offline' &&
+        syncStatus !== 'error' &&
+        syncStatus !== 'unauthorized'
+
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger
+                render={
+                    <Button
+                        variant='ghost'
+                        className='flex size-8 text-muted-foreground data-open:bg-muted'
+                        size='icon'
+                    />
+                }
+            >
+                <EllipsisVerticalIcon />
+                <span className='sr-only'>Open menu</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end' className='w-32'>
+                <DropdownMenuItem
+                    disabled={!canPay}
+                    onClick={() => {
+                        void useInfo.getState().paidCharge(charge.id)
+                    }}
+                >
+                    Mark as paid
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                    disabled={!canWrite}
+                    onClick={() => {
+                        useEditChargeDialogState.getState().setCharge(charge)
+                    }}
+                >
+                    Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={!canWrite}>
+                    Make a copy
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                    variant='destructive'
+                    disabled={!canWrite}
+                    onClick={() => {
+                        useDeleteChargeDialogState
+                            .getState()
+                            .setChargeId(charge.id)
+                    }}
+                >
+                    Delete
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    )
+}
 
 const columns: ColumnDef<ChargeWithCategory>[] = [
     // {
@@ -269,62 +334,25 @@ const columns: ColumnDef<ChargeWithCategory>[] = [
     // },
     {
         id: 'actions',
-        cell: ({ row }) => {
-            return (
-                <DropdownMenu>
-                    <DropdownMenuTrigger
-                        render={
-                            <Button
-                                variant='ghost'
-                                className='flex size-8 text-muted-foreground data-open:bg-muted'
-                                size='icon'
-                            />
-                        }
-                    >
-                        <EllipsisVerticalIcon />
-                        <span className='sr-only'>Open menu</span>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align='end' className='w-32'>
-                        <DropdownMenuItem
-                            onClick={() => {
-                                useInfo.getState().paidCharge(row.original.id)
-                            }}
-                        >
-                            Marks as paided
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                            onClick={() => {
-                                useEditChargeDialogState
-                                    .getState()
-                                    .setCharge(row.original)
-                            }}
-                        >
-                            Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>Make a copy</DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                            variant='destructive'
-                            onClick={() => {
-                                useDeleteChargeDialogState
-                                    .getState()
-                                    .setChargeId(row.original.id)
-                            }}
-                        >
-                            Delete
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            )
-        },
+        cell: ({ row }) => <ChargeActions charge={row.original} />,
     },
 ]
-export function ChargesTable() {
+export function ChargesTable({
+    cardId,
+    userId,
+}: {
+    cardId: string
+    userId: string
+}) {
     const openCreateDialog = useCreateDialogState((s) => s.toggle)
-    const { data, fetch } = useInfo(
+    const { data, fetch, syncCard } = useInfo(
         useShallow((s) => ({
-            data: s.charges,
+            data:
+                s.activeCardId === cardId && s.activeUserId === userId
+                    ? s.charges
+                    : [],
             fetch: s.fetch,
+            syncCard: s.syncCard,
         })),
     )
     const rowCount = data.length
@@ -338,48 +366,56 @@ export function ChargesTable() {
         pageIndex: 0,
         pageSize: 20,
     })
-    const { card_id } = useParams<{ card_id: string }>()
     useEffect(() => {
-        if (card_id) {
-            fetch(card_id)
-        }
-    }, [card_id, fetch])
+        void fetch(cardId, userId)
+    }, [cardId, fetch, userId])
     useEffect(() => {
-        if (!card_id) return
-
-        let disposed = false
         let checking = false
 
         async function checkForCardUpdates() {
-            if (checking || document.visibilityState !== 'visible') return
+            if (
+                checking ||
+                document.visibilityState !== 'visible' ||
+                navigator.onLine === false
+            ) {
+                return
+            }
             checking = true
             try {
-                const version = await getCardVersionAction(card_id)
-                const currentVersion = useInfo.getState().cardVersion
-                if (!disposed && version && version !== currentVersion) {
-                    await useInfo.getState().fetch(card_id)
-                }
+                await syncCard(cardId, userId)
             } finally {
                 checking = false
             }
         }
 
-        const interval = window.setInterval(checkForCardUpdates, 5000)
+        const interval = window.setInterval(checkForCardUpdates, 30_000)
         const checkWhenVisible = () => {
             if (document.visibilityState === 'visible') {
                 void checkForCardUpdates()
             }
         }
+        const markOffline = () => {
+            const state = useInfo.getState()
+            if (
+                state.activeCardId === cardId &&
+                state.activeUserId === userId
+            ) {
+                useInfo.setState({ syncStatus: 'offline' })
+            }
+        }
         window.addEventListener('focus', checkForCardUpdates)
+        window.addEventListener('online', checkForCardUpdates)
+        window.addEventListener('offline', markOffline)
         document.addEventListener('visibilitychange', checkWhenVisible)
 
         return () => {
-            disposed = true
             window.clearInterval(interval)
             window.removeEventListener('focus', checkForCardUpdates)
+            window.removeEventListener('online', checkForCardUpdates)
+            window.removeEventListener('offline', markOffline)
             document.removeEventListener('visibilitychange', checkWhenVisible)
         }
-    }, [card_id])
+    }, [cardId, syncCard, userId])
 
     // eslint-disable-next-line react-hooks/incompatible-library
     const table = useReactTable({
