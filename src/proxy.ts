@@ -13,7 +13,7 @@ export async function proxy(request: NextRequest) {
 
     if (!cookie) {
         if (!refresh) {
-            return NextResponse.redirect(new URL(REDIRECT_PATH, request.url))
+            return authenticationFailure(request)
         }
         return await refreshToken(request, refresh)
     }
@@ -23,7 +23,7 @@ export async function proxy(request: NextRequest) {
 
     if (!jwtPayload) {
         if (!refresh) {
-            return NextResponse.redirect(new URL(REDIRECT_PATH, request.url))
+            return authenticationFailure(request)
         }
         return await refreshToken(request, refresh)
     }
@@ -31,23 +31,31 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-    matcher: '/dashboard/:path*',
+    matcher: ['/dashboard/:path*', '/api/cards/:cardId/sync'],
+}
+
+function authenticationFailure(request: NextRequest) {
+    if (request.nextUrl.pathname.startsWith('/api/cards/')) {
+        return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+    }
+    return NextResponse.redirect(new URL(REDIRECT_PATH, request.url))
 }
 
 async function refreshToken(request: NextRequest, refresh: string) {
+    const currentRefreshHash = weakHash(refresh)
     const session = await db.session.findUnique({
         where: {
-            refresh_token: weakHash(refresh),
+            refresh_token: currentRefreshHash,
         },
     })
     if (!session) {
-        return NextResponse.redirect(new URL(REDIRECT_PATH, request.url))
+        return authenticationFailure(request)
     }
     if (session.expires_at.getTime() < Date.now()) {
-        await db.session.delete({
+        await db.session.deleteMany({
             where: { id: session.id },
         })
-        return NextResponse.redirect(new URL(REDIRECT_PATH, request.url))
+        return authenticationFailure(request)
     }
     const expires_at = new Date(
         Temporal.Now.instant().add({
@@ -55,18 +63,26 @@ async function refreshToken(request: NextRequest, refresh: string) {
         }).epochMilliseconds,
     )
     const refresh_token = generateRefreshToken()
-    await db.session.update({
-        where: { id: session.id },
+    const rotated = await db.session.updateMany({
+        where: {
+            id: session.id,
+            refresh_token: currentRefreshHash,
+        },
         data: {
             refresh_token: weakHash(refresh_token),
             expires_at,
         },
     })
+    if (rotated.count !== 1) return authenticationFailure(request)
     const jwt = await createJWT({
         sub: session.user_id,
         session_id: session.id,
     })
-    const response = NextResponse.next()
+    request.cookies.set(COOKIES.SESSION, jwt)
+    request.cookies.set(COOKIES.REFRESH, refresh_token)
+    const response = NextResponse.next({
+        request: { headers: request.headers },
+    })
     response.cookies.set(COOKIES.SESSION, jwt, {
         httpOnly: true,
         secure: NODE_ENV === 'production',

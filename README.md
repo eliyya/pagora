@@ -142,6 +142,45 @@ MCP deployment/version metadata is public so agents can verify rollouts:
 
 Authenticated agents can also call the MCP tool `get_mcp_version`.
 
+## Client-first synchronization
+
+Each card is cached locally in IndexedDB, scoped by user and card. Opening a
+card renders that local copy first and then requests only changes after its
+last synchronization cursor.
+
+Every charge, category, or payment mutation increments `Card.sync_version`
+and writes small `card_changes` entries in the same database transaction. The
+sync endpoint returns upserts plus deletion tombstones; a request at the
+current cursor returns `204 No Content`. A full snapshot is only required for
+a new cache, an invalid cursor, or conflict recovery.
+
+Creating, editing, and deleting charges is local-first. Pagora applies the
+change immediately, persists the updated card and an ordered command in the
+same IndexedDB transaction, and pushes that outbox when a connection is
+available. Client mutation IDs make retries idempotent, including the case
+where the server committed a command but its response never reached the
+browser. Causal dependencies preserve offline sequences such as
+create -> edit -> delete.
+
+If another member changed the same charge first, Pagora keeps the conflict in
+IndexedDB and asks the user whether to accept the server version or retry the
+local change against the latest revision. Multiple tabs coordinate pushes
+with the browser Locks API and notify one another through `BroadcastChannel`.
+
+Payments, sharing, agent tokens, and direct category administration intentionally
+remain online-only. They represent financial, security, or shared configuration
+operations and run only after pending charge changes have synchronized.
+
+Pagora is also installable as a PWA. A Serwist service worker precaches a generic
+offline shell and the versioned Next.js assets needed to run it. It never caches
+authenticated dashboard HTML, API responses, Server Actions, or RSC payloads.
+The shell reads the last verified user/card bootstrap and each card snapshot from
+IndexedDB, so a previously opened card can be reopened, refreshed, and edited
+without a connection. A card must be opened online at least once before it is
+available offline. Logging out removes the visible snapshots and offline
+bootstrap while preserving the user-scoped outbox and conflicts for recovery on
+the next login.
+
 ## Notes
 
 Amounts are stored as integers in cents to avoid floating-point money issues.

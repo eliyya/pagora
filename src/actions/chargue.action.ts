@@ -10,8 +10,13 @@ import { EditChargeSchema } from '@/schemas/edit-charge.schema'
 import z from 'zod'
 import { getCurrentUserAction } from './users.action'
 import { Charge, ChargeCategory } from '@/db/generated/prisma/browser'
-import { assertCardWritable, touchCardActivity } from '@/lib/card-access'
+import { assertCardWritable } from '@/lib/card-access'
 import type { Prisma } from '@/db/generated/prisma/client'
+import {
+    beginCardChange,
+    recordCardChanges,
+    type CardChangeInput,
+} from '@/lib/card-changes'
 
 type ChargeWithCategory = Charge & {
     category: ChargeCategory | null
@@ -57,6 +62,7 @@ export async function createChargue(data: CreateChargueProps) {
     }
     await assertCardWritable(parsed.data.card_id, user.id)
     const charge = await db.$transaction(async (tx) => {
+        const syncVersion = await beginCardChange(parsed.data.card_id, tx)
         const category_id = await resolveCategoryId(
             tx,
             parsed.data.card_id,
@@ -68,10 +74,30 @@ export async function createChargue(data: CreateChargueProps) {
                 name: parsed.data.name,
                 amount: parsed.data.amount,
                 category_id,
+                revision: syncVersion,
             },
             include: { category: true },
         })
-        await touchCardActivity(parsed.data.card_id, tx)
+        const changes: CardChangeInput[] = [
+            {
+                entity: 'charge',
+                entityId: created.id,
+                operation: 'upsert',
+            },
+        ]
+        if (category_id) {
+            changes.unshift({
+                entity: 'category',
+                entityId: category_id,
+                operation: 'upsert',
+            })
+        }
+        await recordCardChanges(
+            parsed.data.card_id,
+            syncVersion,
+            changes,
+            tx,
+        )
         return created
     })
     return charge
@@ -115,12 +141,14 @@ export async function batchPayChargesAction(card_id: string, amount: number) {
         return { error: 'not found' as const }
     }
     const { updated, payments } = await db.$transaction(async (tx) => {
+        const syncVersion = await beginCardChange(card_id, tx)
         const all = await tx.charge.findMany({
             where: { card_id },
             orderBy: { created_at: 'asc' },
         })
         const updated: ChargeWithCategory[] = []
         const payments: Array<{
+            paymentId: string
             chargeId: string
             amount: number
             chargeDate: Date
@@ -134,10 +162,13 @@ export async function batchPayChargesAction(card_id: string, amount: number) {
             remaining -= pay
             const newCharge = await tx.charge.update({
                 where: { id: charge.id },
-                data: { paid: charge.paid + pay },
+                data: {
+                    paid: charge.paid + pay,
+                    revision: syncVersion,
+                },
                 include: { category: true },
             })
-            await tx.paymentLog.create({
+            const payment = await tx.paymentLog.create({
                 data: {
                     charge_id: charge.id,
                     amount: pay,
@@ -145,6 +176,7 @@ export async function batchPayChargesAction(card_id: string, amount: number) {
                 },
             })
             payments.push({
+                paymentId: payment.id,
                 chargeId: charge.id,
                 amount: pay,
                 chargeDate: charge.created_at,
@@ -152,7 +184,23 @@ export async function batchPayChargesAction(card_id: string, amount: number) {
             updated.push(newCharge)
         }
         if (updated.length > 0) {
-            await touchCardActivity(card_id, tx)
+            await recordCardChanges(
+                card_id,
+                syncVersion,
+                [
+                    ...updated.map((charge) => ({
+                        entity: 'charge' as const,
+                        entityId: charge.id,
+                        operation: 'upsert' as const,
+                    })),
+                    ...payments.map((payment) => ({
+                        entity: 'payment' as const,
+                        entityId: payment.paymentId,
+                        operation: 'upsert' as const,
+                    })),
+                ],
+                tx,
+            )
         }
         return { updated, payments }
     })
@@ -183,28 +231,58 @@ export async function paidChargeAction(id: string) {
         return { error: 'not found' as const }
     }
     try {
-        const paymentAmount = charge.amount - charge.paid
+        const result = await db.$transaction(async (tx) => {
+            const syncVersion = await beginCardChange(charge.card_id, tx)
+            const current = await tx.charge.findUnique({ where: { id } })
+            if (!current) return null
 
-        const newCharge = await db.$transaction(async (tx) => {
+            const paymentAmount = current.amount - current.paid
+            if (paymentAmount <= 0) {
+                return { paid: current, paymentAmount: 0 }
+            }
+
             const paid = await tx.charge.update({
                 where: { id },
-                data: { paid: charge.amount },
+                data: {
+                    paid: current.amount,
+                    revision: syncVersion,
+                },
             })
 
-            await tx.paymentLog.create({
+            const payment = await tx.paymentLog.create({
                 data: {
                     charge_id: id,
                     amount: paymentAmount,
                     status: 'success',
                 },
             })
-            await touchCardActivity(charge.card_id, tx)
-            return paid
+            await recordCardChanges(
+                charge.card_id,
+                syncVersion,
+                [
+                    {
+                        entity: 'charge',
+                        entityId: paid.id,
+                        operation: 'upsert',
+                    },
+                    {
+                        entity: 'payment',
+                        entityId: payment.id,
+                        operation: 'upsert',
+                    },
+                ],
+                tx,
+            )
+            return { paid, paymentAmount }
         })
 
+        if (!result) {
+            return { error: 'not found' as const }
+        }
+
         return {
-            data: newCharge,
-            paymentAmount,
+            data: result.paid,
+            paymentAmount: result.paymentAmount,
         }
     } catch (error) {
         console.log(error)
@@ -214,7 +292,11 @@ export async function paidChargeAction(id: string) {
     }
 }
 
-export async function updateChargeAction(id: string, data: z.infer<typeof EditChargeSchema>) {
+export async function updateChargeAction(
+    id: string,
+    data: z.infer<typeof EditChargeSchema>,
+    expectedRevision?: number,
+) {
     const user = await getCurrentUserAction()
     if (!user) {
         return {
@@ -248,8 +330,30 @@ export async function updateChargeAction(id: string, data: z.infer<typeof EditCh
                 fieldErrors: errors.fieldErrors,
             }
         }
+        if (
+            expectedRevision !== undefined &&
+            (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0)
+        ) {
+            return { error: 'invalid revision' as const }
+        }
 
-        const updatedCharge = await db.$transaction(async (tx) => {
+        const mutation = await db.$transaction(async (tx) => {
+            const syncVersion = await beginCardChange(charge.card_id, tx)
+            const current = await tx.charge.findUnique({
+                where: { id },
+                include: { category: true },
+            })
+            if (!current) return { status: 'not-found' as const }
+            if (
+                expectedRevision !== undefined &&
+                current.revision !== expectedRevision
+            ) {
+                return {
+                    status: 'conflict' as const,
+                    charge: current,
+                }
+            }
+
             const category_id = await resolveCategoryId(
                 tx,
                 charge.card_id,
@@ -261,16 +365,44 @@ export async function updateChargeAction(id: string, data: z.infer<typeof EditCh
                     name: parsed.data.name,
                     amount: parsed.data.amount,
                     category_id,
+                    revision: syncVersion,
                 },
                 include: { category: true },
             })
-            await touchCardActivity(charge.card_id, tx)
-            return updated
+            const changes: CardChangeInput[] = [
+                {
+                    entity: 'charge',
+                    entityId: updated.id,
+                    operation: 'upsert',
+                },
+            ]
+            if (category_id) {
+                changes.unshift({
+                    entity: 'category',
+                    entityId: category_id,
+                    operation: 'upsert',
+                })
+            }
+            await recordCardChanges(
+                charge.card_id,
+                syncVersion,
+                changes,
+                tx,
+            )
+            return { status: 'updated' as const, charge: updated }
         })
 
-        return {
-            data: updatedCharge,
+        if (mutation.status === 'not-found') {
+            return { error: 'not found' as const }
         }
+        if (mutation.status === 'conflict') {
+            return {
+                error: 'conflict' as const,
+                conflict: mutation.charge,
+            }
+        }
+
+        return { data: mutation.charge }
     } catch (error) {
         console.log(error)
         return {
@@ -279,7 +411,10 @@ export async function updateChargeAction(id: string, data: z.infer<typeof EditCh
     }
 }
 
-export async function deleteChargeAction(id: string) {
+export async function deleteChargeAction(
+    id: string,
+    expectedRevision?: number,
+) {
     const user = await getCurrentUserAction()
     if (!user) {
         return {
@@ -305,12 +440,57 @@ export async function deleteChargeAction(id: string) {
     }
 
     try {
-        await db.$transaction(async (tx) => {
+        if (
+            expectedRevision !== undefined &&
+            (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0)
+        ) {
+            return { error: 'invalid revision' as const }
+        }
+
+        const mutation = await db.$transaction(async (tx) => {
+            const syncVersion = await beginCardChange(charge.card_id, tx)
+            const current = await tx.charge.findUnique({
+                where: { id },
+                include: { category: true },
+            })
+            if (!current) return { status: 'not-found' as const }
+            if (
+                expectedRevision !== undefined &&
+                current.revision !== expectedRevision
+            ) {
+                return {
+                    status: 'conflict' as const,
+                    charge: current,
+                }
+            }
+
             await tx.charge.delete({
                 where: { id },
             })
-            await touchCardActivity(charge.card_id, tx)
+            await recordCardChanges(
+                charge.card_id,
+                syncVersion,
+                [
+                    {
+                        entity: 'charge',
+                        entityId: id,
+                        operation: 'delete',
+                    },
+                ],
+                tx,
+            )
+            return { status: 'deleted' as const }
         })
+
+        if (mutation.status === 'not-found') {
+            return { error: 'not found' as const }
+        }
+        if (mutation.status === 'conflict') {
+            return {
+                error: 'conflict' as const,
+                conflict: mutation.charge,
+            }
+        }
 
         return {
             data: { id },

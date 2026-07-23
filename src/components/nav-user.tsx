@@ -32,6 +32,8 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { useShallow } from 'zustand/shallow'
+import { clearUserOfflineView } from '@/lib/client-card-cache'
+import { toast } from 'sonner'
 
 type PendingInvitation = Awaited<
     ReturnType<typeof listPendingCardInvitationsAction>
@@ -39,9 +41,10 @@ type PendingInvitation = Awaited<
 
 export function NavUser() {
     const { isMobile } = useSidebar()
-    const { user, pendingInvitations, refreshCards } = useInfo(
+    const { user, activeUserId, pendingInvitations, refreshCards } = useInfo(
         useShallow((state) => ({
             user: state.user,
+            activeUserId: state.activeUserId,
             pendingInvitations: state.pendingInvitations,
             refreshCards: state.refreshCards,
         })),
@@ -72,6 +75,23 @@ export function NavUser() {
         await respondToCardInvitationAction(invitationId, response)
         await Promise.all([refreshInvitations(), refreshCards()])
         setLoadingInvitationId(null)
+    }
+
+    async function logout() {
+        if (navigator.onLine === false) {
+            toast.error('Conéctate para cerrar sesión de forma segura.')
+            return
+        }
+        const userId = user?.id ?? activeUserId
+        if (userId) {
+            await clearUserOfflineView(userId).catch(() => undefined)
+        }
+        if (userId && typeof BroadcastChannel !== 'undefined') {
+            const channel = new BroadcastChannel('pagora-auth')
+            channel.postMessage({ type: 'logout', userId })
+            channel.close()
+        }
+        window.location.href = '/api/auth/logout'
     }
 
     return (
@@ -209,7 +229,7 @@ export function NavUser() {
                             ))}
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => window.location.href = '/api/auth/logout'}>
+                        <DropdownMenuItem onClick={logout}>
                             <LogOutIcon />
                             Log out
                         </DropdownMenuItem>

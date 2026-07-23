@@ -3,7 +3,12 @@
 import { db } from '@/db/prisma'
 import { ChargeCategorySchema, EditChargeCategorySchema } from '@/schemas/charge-category.schema'
 import { getCurrentUserAction } from './users.action'
-import { assertCardWritable, touchCardActivity } from '@/lib/card-access'
+import { assertCardWritable } from '@/lib/card-access'
+import {
+    beginCardChange,
+    recordCardChanges,
+    type CardChangeInput,
+} from '@/lib/card-changes'
 import { z } from 'zod'
 
 export async function createChargeCategoryAction(
@@ -24,6 +29,7 @@ export async function createChargeCategoryAction(
     }
 
     const category = await db.$transaction(async (tx) => {
+        const syncVersion = await beginCardChange(parsed.data.card_id, tx)
         const created = await tx.chargeCategory.upsert({
             where: {
                 card_id_name: {
@@ -36,7 +42,18 @@ export async function createChargeCategoryAction(
             },
             create: parsed.data,
         })
-        await touchCardActivity(parsed.data.card_id, tx)
+        await recordCardChanges(
+            parsed.data.card_id,
+            syncVersion,
+            [
+                {
+                    entity: 'category',
+                    entityId: created.id,
+                    operation: 'upsert',
+                },
+            ],
+            tx,
+        )
         return created
     })
 
@@ -65,15 +82,58 @@ export async function updateChargeCategoryAction(
     }
 
     const updated = await db.$transaction(async (tx) => {
+        const syncVersion = await beginCardChange(category.card_id, tx)
+        const current = await tx.chargeCategory.findUnique({ where: { id } })
+        if (!current) throw new Error('category not found')
+
         const result = await tx.chargeCategory.update({
             where: { id },
             data: parsed.data,
         })
-        await touchCardActivity(category.card_id, tx)
-        return result
+        const changes: CardChangeInput[] = [
+            {
+                entity: 'category',
+                entityId: result.id,
+                operation: 'upsert',
+            },
+        ]
+        let affectedChargeIds: string[] = []
+        if (current.name !== result.name) {
+            const affectedCharges = await tx.charge.findMany({
+                where: { category_id: id },
+                select: { id: true },
+            })
+            affectedChargeIds = affectedCharges.map((charge) => charge.id)
+            await tx.charge.updateMany({
+                where: { category_id: id },
+                data: { revision: syncVersion },
+            })
+            changes.push(
+                ...affectedCharges.map((charge) => ({
+                    entity: 'charge' as const,
+                    entityId: charge.id,
+                    operation: 'upsert' as const,
+                })),
+            )
+        }
+        await recordCardChanges(
+            category.card_id,
+            syncVersion,
+            changes,
+            tx,
+        )
+        return {
+            category: result,
+            affectedChargeIds,
+            revision: syncVersion,
+        }
     })
 
-    return { data: updated }
+    return {
+        data: updated.category,
+        affectedChargeIds: updated.affectedChargeIds,
+        revision: updated.revision,
+    }
 }
 
 export async function deleteChargeCategoryAction(id: string) {
@@ -89,10 +149,46 @@ export async function deleteChargeCategoryAction(id: string) {
         return { error: 'not found' as const }
     }
 
-    await db.$transaction(async (tx) => {
+    const deleted = await db.$transaction(async (tx) => {
+        const syncVersion = await beginCardChange(category.card_id, tx)
+        const affectedCharges = await tx.charge.findMany({
+            where: { category_id: id },
+            select: { id: true },
+        })
+        await tx.charge.updateMany({
+            where: { category_id: id },
+            data: {
+                category_id: null,
+                revision: syncVersion,
+            },
+        })
         await tx.chargeCategory.delete({ where: { id } })
-        await touchCardActivity(category.card_id, tx)
+        await recordCardChanges(
+            category.card_id,
+            syncVersion,
+            [
+                {
+                    entity: 'category',
+                    entityId: id,
+                    operation: 'delete',
+                },
+                ...affectedCharges.map((charge) => ({
+                    entity: 'charge' as const,
+                    entityId: charge.id,
+                    operation: 'upsert' as const,
+                })),
+            ],
+            tx,
+        )
+        return {
+            affectedChargeIds: affectedCharges.map((charge) => charge.id),
+            revision: syncVersion,
+        }
     })
 
-    return { data: { id } }
+    return {
+        data: { id },
+        affectedChargeIds: deleted.affectedChargeIds,
+        revision: deleted.revision,
+    }
 }

@@ -56,7 +56,7 @@ function EditChargeForm({
         name: string,
         amount: number,
         categoryName?: string,
-    ) => Promise<void>
+    ) => Promise<boolean>
     onClose: () => void
 }) {
     const [name, setName] = useState(charge.name)
@@ -64,9 +64,11 @@ function EditChargeForm({
     const [categoryName, setCategoryName] = useState(charge.category?.name ?? '')
     const categories = useInfo((s) => s.categories)
     const [errors, setErrors] = useState<{ name?: string; amount?: string }>({})
+    const [saving, setSaving] = useState(false)
 
     async function handleSubmit(e: FormEvent<HTMLFormElement>) {
         e.preventDefault()
+        if (saving) return
 
         const trimmedName = name.trim()
 
@@ -76,9 +78,21 @@ function EditChargeForm({
         setErrors(newErrors)
         if (Object.keys(newErrors).length > 0) return
 
-        await onSubmit(charge.id, trimmedName, amountCents, categoryName)
-        setErrors({})
-        onClose()
+        setSaving(true)
+        try {
+            const saved = await onSubmit(
+                charge.id,
+                trimmedName,
+                amountCents,
+                categoryName,
+            )
+            if (saved) {
+                setErrors({})
+                onClose()
+            }
+        } finally {
+            setSaving(false)
+        }
     }
 
     return (
@@ -93,6 +107,7 @@ function EditChargeForm({
                     <Input
                         id='edit-name'
                         name='name'
+                        maxLength={500}
                         value={name}
                         onChange={(event) => setName(event.target.value)}
                     />
@@ -114,6 +129,7 @@ function EditChargeForm({
                         id='edit-category'
                         name='category'
                         list='edit-charge-categories'
+                        maxLength={60}
                         value={categoryName}
                         onChange={(event) =>
                             setCategoryName(event.target.value)
@@ -128,8 +144,16 @@ function EditChargeForm({
                 </Field>
             </FieldGroup>
             <DialogFooter>
-                <DialogClose render={<Button variant='outline'>Cancel</Button>} />
-                <Button type='submit'>Save changes</Button>
+                <DialogClose
+                    render={
+                        <Button variant='outline' disabled={saving}>
+                            Cancel
+                        </Button>
+                    }
+                />
+                <Button type='submit' disabled={saving}>
+                    {saving ? 'Saving locally…' : 'Save changes'}
+                </Button>
             </DialogFooter>
         </form>
     )

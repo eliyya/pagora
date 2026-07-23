@@ -39,6 +39,7 @@ import { useTableContext } from './table-context'
 import { useInfo } from '@/stores/info.store'
 import { ShareCardDialog } from './share-card-dialog'
 import { BudgetCategoriesPanel } from './budget-categories-panel'
+import { CardSyncStatus } from './card-sync-status'
 
 export function DashboardTabs({
     openCreateDialog,
@@ -50,8 +51,23 @@ export function DashboardTabs({
     const [shareOpen, setShareOpen] = useState(false)
     const [tab, setTab] = useState('charges')
     const cardAccess = useInfo((s) => s.cardAccess)
+    const pendingMutationCount = useInfo((s) => s.pendingMutationCount)
+    const conflictCount = useInfo((s) => s.syncConflicts.length)
+    const syncStatus = useInfo((s) => s.syncStatus)
     const canWrite = cardAccess === 'owner' || cardAccess === 'write'
-    const canShare = cardAccess === 'owner'
+    const onlineServicesAvailable =
+        syncStatus !== 'offline' &&
+        syncStatus !== 'error' &&
+        syncStatus !== 'unauthorized' &&
+        syncStatus !== 'unavailable'
+    const canShare = cardAccess === 'owner' && onlineServicesAvailable
+    const canPay =
+        canWrite &&
+        pendingMutationCount === 0 &&
+        conflictCount === 0 &&
+        syncStatus !== 'offline' &&
+        syncStatus !== 'error' &&
+        syncStatus !== 'unauthorized'
 
     return (
         <div>
@@ -90,7 +106,12 @@ export function DashboardTabs({
                                 <SelectItem value='charges'>Charges</SelectItem>
                                 <SelectItem value='budgets'>Budgets</SelectItem>
                                 <SelectItem value='graph'>Graph</SelectItem>
-                                <SelectItem value='agents'>Agents</SelectItem>
+                                <SelectItem
+                                    value='agents'
+                                    disabled={!onlineServicesAvailable}
+                                >
+                                    Agents
+                                </SelectItem>
                                 <SelectItem value='focus-documents'>
                                     Focus Documents
                                 </SelectItem>
@@ -115,12 +136,18 @@ export function DashboardTabs({
                         <TabsTrigger value='charges'>Charges</TabsTrigger>
                         <TabsTrigger value='budgets'>Budgets</TabsTrigger>
                         <TabsTrigger value='graph'>Graph</TabsTrigger>
-                        <TabsTrigger value='agents'>Agents</TabsTrigger>
+                        <TabsTrigger
+                            value='agents'
+                            disabled={!onlineServicesAvailable}
+                        >
+                            Agents
+                        </TabsTrigger>
                         <TabsTrigger value='focus-documents'>
                             Focus Documents
                         </TabsTrigger>
                     </TabsList>
                     <div className='flex items-center gap-2'>
+                        <CardSyncStatus />
                         <DropdownMenu>
                             <DropdownMenuTrigger
                                 render={<Button variant='outline' size='sm' />}
@@ -168,7 +195,7 @@ export function DashboardTabs({
                             variant='outline'
                             size='sm'
                             onClick={() => setPayOpen(true)}
-                            disabled={!canWrite}
+                            disabled={!canPay}
                         >
                             <DollarSignIcon />
                             <span className='hidden lg:inline'>

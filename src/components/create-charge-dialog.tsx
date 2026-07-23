@@ -32,6 +32,7 @@ export function CreateChargeDialog() {
     const [amountCents, setAmountCents] = useState(0)
     const [categoryName, setCategoryName] = useState('')
     const [errors, setErrors] = useState<{ name?: string; amount?: string }>({})
+    const [saving, setSaving] = useState(false)
 
     function resetForm() {
         setName('')
@@ -47,6 +48,7 @@ export function CreateChargeDialog() {
 
     async function handleSubmit(e: FormEvent<HTMLFormElement>) {
         e.preventDefault()
+        if (saving) return
         const trimmedName = name.trim()
 
         const newErrors: typeof errors = {}
@@ -55,9 +57,17 @@ export function CreateChargeDialog() {
         setErrors(newErrors)
         if (Object.keys(newErrors).length > 0) return
 
-        await createCharge(amountCents, trimmedName, categoryName)
-        resetForm()
-        handleOpenChange(false)
+        setSaving(true)
+        try {
+            const saved = await createCharge(
+                amountCents,
+                trimmedName,
+                categoryName,
+            )
+            if (saved) handleOpenChange(false)
+        } finally {
+            setSaving(false)
+        }
     }
 
     return (
@@ -76,6 +86,7 @@ export function CreateChargeDialog() {
                             <Input
                                 id='name-1'
                                 name='name'
+                                maxLength={500}
                                 value={name}
                                 onChange={(event) =>
                                     setName(event.target.value)
@@ -103,6 +114,7 @@ export function CreateChargeDialog() {
                                 id='category-1'
                                 name='category'
                                 list='charge-categories'
+                                maxLength={60}
                                 value={categoryName}
                                 onChange={(event) =>
                                     setCategoryName(event.target.value)
@@ -121,9 +133,15 @@ export function CreateChargeDialog() {
                     </FieldGroup>
                     <DialogFooter>
                         <DialogClose
-                            render={<Button variant='outline'>Cancel</Button>}
+                            render={
+                                <Button variant='outline' disabled={saving}>
+                                    Cancel
+                                </Button>
+                            }
                         />
-                        <Button type='submit'>Save changes</Button>
+                        <Button type='submit' disabled={saving}>
+                            {saving ? 'Saving locally…' : 'Save changes'}
+                        </Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
