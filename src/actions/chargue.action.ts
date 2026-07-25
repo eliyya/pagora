@@ -9,7 +9,7 @@ import {
 import { EditChargeSchema } from '@/schemas/edit-charge.schema'
 import z from 'zod'
 import { getCurrentUserAction } from './users.action'
-import { Charge, ChargeCategory } from '@/db/generated/prisma/browser'
+import { Charge } from '@/db/generated/prisma/browser'
 import { assertCardWritable } from '@/lib/card-access'
 import type { Prisma } from '@/db/generated/prisma/client'
 import {
@@ -17,10 +17,11 @@ import {
     recordCardChanges,
     type CardChangeInput,
 } from '@/lib/card-changes'
-
-type ChargeWithCategory = Charge & {
-    category: ChargeCategory | null
-}
+import {
+    payCardAmount,
+    payChargeFully,
+} from '@/lib/charge-payments'
+import { isDateOnly } from '@/lib/installments'
 
 interface CreateChargueProps extends CreateCharge {
     card_id: string
@@ -130,81 +131,57 @@ export async function createChargueFormAction(
     }
 }
 
-export async function batchPayChargesAction(card_id: string, amount: number) {
+export async function batchPayChargesAction(
+    card_id: string,
+    amount: number,
+    requestId: string,
+    asOfDate: string,
+) {
     const user = await getCurrentUserAction()
     if (!user) {
         return { error: 'unauthorized' as const }
+    }
+    if (
+        !Number.isSafeInteger(amount) ||
+        amount <= 0 ||
+        amount > 2_147_483_647 ||
+        typeof requestId !== 'string' ||
+        requestId.length === 0 ||
+        requestId.length > 440 ||
+        !isDateOnly(asOfDate)
+    ) {
+        return { error: 'validation error' as const }
     }
     try {
         await assertCardWritable(card_id, user.id)
     } catch {
         return { error: 'not found' as const }
     }
-    const { updated, payments } = await db.$transaction(async (tx) => {
-        const syncVersion = await beginCardChange(card_id, tx)
-        const all = await tx.charge.findMany({
-            where: { card_id },
-            orderBy: { created_at: 'asc' },
-        })
-        const updated: ChargeWithCategory[] = []
-        const payments: Array<{
-            paymentId: string
-            chargeId: string
-            amount: number
-            chargeDate: Date
-        }> = []
-        let remaining = amount
-        for (const charge of all) {
-            if (remaining <= 0) break
-            const owed = charge.amount - charge.paid
-            if (owed <= 0) continue
-            const pay = Math.min(owed, remaining)
-            remaining -= pay
-            const newCharge = await tx.charge.update({
-                where: { id: charge.id },
-                data: {
-                    paid: charge.paid + pay,
-                    revision: syncVersion,
-                },
-                include: { category: true },
-            })
-            const payment = await tx.paymentLog.create({
-                data: {
-                    charge_id: charge.id,
-                    amount: pay,
-                    status: 'success',
-                },
-            })
-            payments.push({
-                paymentId: payment.id,
-                chargeId: charge.id,
-                amount: pay,
-                chargeDate: charge.created_at,
-            })
-            updated.push(newCharge)
-        }
-        if (updated.length > 0) {
-            await recordCardChanges(
-                card_id,
-                syncVersion,
-                [
-                    ...updated.map((charge) => ({
-                        entity: 'charge' as const,
-                        entityId: charge.id,
-                        operation: 'upsert' as const,
-                    })),
-                    ...payments.map((payment) => ({
-                        entity: 'payment' as const,
-                        entityId: payment.paymentId,
-                        operation: 'upsert' as const,
-                    })),
-                ],
-                tx,
-            )
-        }
-        return { updated, payments }
+    const result = await payCardAmount(card_id, amount, {
+        asOfDate,
+        idempotency: {
+            requestId,
+            userId: user.id,
+        },
     })
-    return { data: updated, payments }
+    if (result.status === 'not-found') {
+        return { error: 'not found' as const }
+    }
+    if (result.status === 'idempotency-conflict') {
+        return { error: 'idempotency conflict' as const }
+    }
+
+    return {
+        data: result.updatedCharges,
+        payments: result.payments.map((payment) => ({
+            paymentId: payment.paymentId,
+            chargeId: payment.chargeId,
+            amount: payment.amount,
+            chargeDate: payment.scheduledFor,
+        })),
+        appliedAmount: amount - result.remaining,
+        unappliedAmount: result.remaining,
+    }
 }
 
 export async function paidChargeAction(id: string) {
@@ -231,57 +208,17 @@ export async function paidChargeAction(id: string) {
         return { error: 'not found' as const }
     }
     try {
-        const result = await db.$transaction(async (tx) => {
-            const syncVersion = await beginCardChange(charge.card_id, tx)
-            const current = await tx.charge.findUnique({ where: { id } })
-            if (!current) return null
-
-            const paymentAmount = current.amount - current.paid
-            if (paymentAmount <= 0) {
-                return { paid: current, paymentAmount: 0 }
-            }
-
-            const paid = await tx.charge.update({
-                where: { id },
-                data: {
-                    paid: current.amount,
-                    revision: syncVersion,
-                },
-            })
-
-            const payment = await tx.paymentLog.create({
-                data: {
-                    charge_id: id,
-                    amount: paymentAmount,
-                    status: 'success',
-                },
-            })
-            await recordCardChanges(
-                charge.card_id,
-                syncVersion,
-                [
-                    {
-                        entity: 'charge',
-                        entityId: paid.id,
-                        operation: 'upsert',
-                    },
-                    {
-                        entity: 'payment',
-                        entityId: payment.id,
-                        operation: 'upsert',
-                    },
-                ],
-                tx,
-            )
-            return { paid, paymentAmount }
-        })
-
-        if (!result) {
+        const result = await payChargeFully(charge.card_id, id)
+        if (result.status === 'not-found') {
             return { error: 'not found' as const }
+        }
+        if (result.status === 'installment-parent') {
+            return { error: 'installment parent is not payable' as const }
         }
 
         return {
-            data: result.paid,
+            data: result.charge,
+            relatedCharges: result.updatedCharges,
             paymentAmount: result.paymentAmount,
         }
     } catch (error) {
@@ -338,12 +275,14 @@ export async function updateChargeAction(
         }
 
         const mutation = await db.$transaction(async (tx) => {
-            const syncVersion = await beginCardChange(charge.card_id, tx)
             const current = await tx.charge.findUnique({
                 where: { id },
                 include: { category: true },
             })
             if (!current) return { status: 'not-found' as const }
+            if (current.kind !== 'single') {
+                return { status: 'managed-installment' as const }
+            }
             if (
                 expectedRevision !== undefined &&
                 current.revision !== expectedRevision
@@ -354,6 +293,7 @@ export async function updateChargeAction(
                 }
             }
 
+            const syncVersion = await beginCardChange(charge.card_id, tx)
             const category_id = await resolveCategoryId(
                 tx,
                 charge.card_id,
@@ -394,6 +334,9 @@ export async function updateChargeAction(
 
         if (mutation.status === 'not-found') {
             return { error: 'not found' as const }
+        }
+        if (mutation.status === 'managed-installment') {
+            return { error: 'installment plan requires synchronized edit' as const }
         }
         if (mutation.status === 'conflict') {
             return {
@@ -448,12 +391,14 @@ export async function deleteChargeAction(
         }
 
         const mutation = await db.$transaction(async (tx) => {
-            const syncVersion = await beginCardChange(charge.card_id, tx)
             const current = await tx.charge.findUnique({
                 where: { id },
                 include: { category: true },
             })
             if (!current) return { status: 'not-found' as const }
+            if (current.kind !== 'single') {
+                return { status: 'managed-installment' as const }
+            }
             if (
                 expectedRevision !== undefined &&
                 current.revision !== expectedRevision
@@ -464,6 +409,7 @@ export async function deleteChargeAction(
                 }
             }
 
+            const syncVersion = await beginCardChange(charge.card_id, tx)
             await tx.charge.delete({
                 where: { id },
             })
@@ -484,6 +430,11 @@ export async function deleteChargeAction(
 
         if (mutation.status === 'not-found') {
             return { error: 'not found' as const }
+        }
+        if (mutation.status === 'managed-installment') {
+            return {
+                error: 'installment plan requires synchronized delete' as const,
+            }
         }
         if (mutation.status === 'conflict') {
             return {

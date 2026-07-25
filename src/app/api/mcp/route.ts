@@ -14,10 +14,19 @@ import {
 import {
     beginCardChange,
     recordCardChanges,
-    type CardChangeInput,
 } from '@/lib/card-changes'
+import { createChargeSet } from '@/lib/charge-creation'
+import {
+    payCardAmount as applyCardPayment,
+    payChargeFully,
+} from '@/lib/charge-payments'
+import {
+    isAccountingCharge,
+    isDateOnly,
+    isValidInstallmentCount,
+    type InstallmentPlanInput,
+} from '@/lib/installments'
 import { getMcpVersion } from '@/lib/mcp-version'
-import type { Prisma } from '@/db/generated/prisma/client'
 
 type JsonRpcId = string | number | null
 
@@ -86,6 +95,9 @@ function getMoneyAmount(args: Record<string, unknown>, key: string) {
     if (Math.abs(value * 100 - cents) > 1e-6) {
         throw new Error(`${key} supports up to 2 decimal places`)
     }
+    if (!Number.isSafeInteger(cents) || cents > 2_147_483_647) {
+        throw new Error(`${key} exceeds the supported amount`)
+    }
     return cents
 }
 
@@ -112,28 +124,29 @@ function serializeCharge(charge: {
     }
 }
 
-async function resolveCategoryId(
-    cardId: string,
-    categoryName: string | undefined,
-    tx: Prisma.TransactionClient,
-) {
-    const name = categoryName?.trim()
-    if (!name) return null
+function getInstallmentPlan(
+    args: Record<string, unknown>,
+): InstallmentPlanInput | undefined {
+    const hasCount = args.installment_count !== undefined
+    const hasDate = args.first_installment_date !== undefined
+    if (!hasCount && !hasDate) return undefined
+    if (!hasCount || !hasDate) {
+        throw new Error(
+            'installment_count and first_installment_date are required together',
+        )
+    }
 
-    const category = await tx.chargeCategory.upsert({
-        where: {
-            card_id_name: {
-                card_id: cardId,
-                name,
-            },
-        },
-        update: {},
-        create: {
-            card_id: cardId,
-            name,
-        },
-    })
-    return category.id
+    const count = Number(args.installment_count)
+    const firstInstallmentDate = args.first_installment_date
+    if (
+        !isValidInstallmentCount(count) ||
+        !isDateOnly(firstInstallmentDate)
+    ) {
+        throw new Error(
+            'installment_count must be 2-60 and first_installment_date must use YYYY-MM-DD',
+        )
+    }
+    return { count, firstInstallmentDate }
 }
 
 async function listCards(token: AgentTokenRecord) {
@@ -172,7 +185,10 @@ async function listCharges(
                 : { id: { in: readableCards.all.map((card) => card.id) } },
         },
         include: { category: true },
-        orderBy: { created_at: 'asc' },
+        orderBy: [
+            { scheduled_for: 'asc' },
+            { created_at: 'asc' },
+        ],
     })
 
     return textContent({
@@ -268,44 +284,50 @@ async function createCharge(
         typeof args.category === 'string' && args.category.trim().length > 0
             ? args.category.trim()
             : undefined
+    const installment = getInstallmentPlan(args)
 
     await assertCardWritable(cardId, token.user_id)
 
-    const charge = await db.$transaction(async (tx) => {
+    const created = await db.$transaction(async (tx) => {
         const syncVersion = await beginCardChange(cardId, tx)
-        const category_id = await resolveCategoryId(cardId, categoryName, tx)
-        const created = await tx.charge.create({
-            data: {
-                card_id: cardId,
+        const result = await createChargeSet(
+            tx,
+            {
+                cardId,
                 name,
                 amount,
-                category_id,
-                revision: syncVersion,
+                categoryName,
+                installment,
             },
-            include: { category: true },
-        })
-        const changes: CardChangeInput[] = [
-            {
-                entity: 'charge',
-                entityId: created.id,
-                operation: 'upsert',
-            },
-        ]
-        if (category_id) {
-            changes.unshift({
-                entity: 'category',
-                entityId: category_id,
-                operation: 'upsert',
-            })
-        }
-        await recordCardChanges(cardId, syncVersion, changes, tx)
-        return created
+            syncVersion,
+        )
+        await recordCardChanges(
+            cardId,
+            syncVersion,
+            [
+                ...(result.category
+                    ? [
+                          {
+                              entity: 'category' as const,
+                              entityId: result.category.id,
+                              operation: 'upsert' as const,
+                          },
+                      ]
+                    : []),
+                ...result.charges.map((charge) => ({
+                    entity: 'charge' as const,
+                    entityId: charge.id,
+                    operation: 'upsert' as const,
+                })),
+            ],
+            tx,
+        )
+        return result.charges
     })
 
     return textContent({
-        charge: {
-            ...serializeCharge(charge),
-        },
+        charge: serializeCharge(created[0]),
+        installments: created.slice(1).map(serializeCharge),
     })
 }
 
@@ -320,58 +342,21 @@ async function payCharge(
     if (!charge) throw new Error('charge not found')
     await assertCardWritable(charge.card_id, token.user_id)
 
-    const result = await db.$transaction(async (tx) => {
-        const syncVersion = await beginCardChange(charge.card_id, tx)
-        const current = await tx.charge.findUnique({
-            where: { id: chargeId },
-            include: { category: true },
-        })
-        if (!current) throw new Error('charge not found')
-
-        const paymentAmount = current.amount - current.paid
-        if (paymentAmount <= 0) {
-            return { charge: current, paymentAmount: 0 }
-        }
-
-        const paid = await tx.charge.update({
-            where: { id: chargeId },
-            data: {
-                paid: current.amount,
-                revision: syncVersion,
-            },
-            include: { category: true },
-        })
-        const payment = await tx.paymentLog.create({
-            data: {
-                charge_id: chargeId,
-                amount: paymentAmount,
-                status: 'success',
-            },
-        })
-        await recordCardChanges(
-            charge.card_id,
-            syncVersion,
-            [
-                {
-                    entity: 'charge',
-                    entityId: paid.id,
-                    operation: 'upsert',
-                },
-                {
-                    entity: 'payment',
-                    entityId: payment.id,
-                    operation: 'upsert',
-                },
-            ],
-            tx,
+    const result = await payChargeFully(charge.card_id, chargeId)
+    if (result.status === 'not-found') {
+        throw new Error('charge not found')
+    }
+    if (result.status === 'installment-parent') {
+        throw new Error(
+            'installment parent is a summary; pay an installment instead',
         )
-        return { charge: paid, paymentAmount }
-    })
+    }
 
     return textContent({
-        charge: {
-            ...serializeCharge(result.charge),
-        },
+        charge: serializeCharge(result.charge),
+        related_charges: result.updatedCharges
+            .filter((updated) => updated.id !== result.charge.id)
+            .map(serializeCharge),
         payment_amount: serializeMoney(result.paymentAmount),
     })
 }
@@ -383,79 +368,38 @@ async function payCardAmount(
     assertAgentScope(token, 'payments:write')
     const cardId = getString(args, 'card_id')
     const requestedAmount = getMoneyAmount(args, 'amount')
+    const idempotencyKey = getString(args, 'idempotency_key')
+    if (idempotencyKey.length > 400) {
+        throw new Error('idempotency_key is too long')
+    }
+    const asOfDate = getString(args, 'as_of_date')
+    if (!isDateOnly(asOfDate)) {
+        throw new Error('as_of_date must use YYYY-MM-DD')
+    }
 
     await assertCardWritable(cardId, token.user_id)
 
-    const result = await db.$transaction(async (tx) => {
-        const syncVersion = await beginCardChange(cardId, tx)
-        const charges = await tx.charge.findMany({
-            where: { card_id: cardId },
-            orderBy: { created_at: 'asc' },
-        })
-        const applied: Array<{
-            charge_id: string
-            charge_name: string
-            amount: number
-        }> = []
-        const changes: CardChangeInput[] = []
-        let remaining = requestedAmount
-
-        for (const charge of charges) {
-            if (remaining <= 0) break
-            const owed = charge.amount - charge.paid
-            if (owed <= 0) continue
-
-            const amount = Math.min(owed, remaining)
-            remaining -= amount
-
-            await tx.charge.update({
-                where: { id: charge.id },
-                data: {
-                    paid: charge.paid + amount,
-                    revision: syncVersion,
-                },
-            })
-            const payment = await tx.paymentLog.create({
-                data: {
-                    charge_id: charge.id,
-                    amount,
-                    status: 'success',
-                },
-            })
-            changes.push(
-                {
-                    entity: 'charge',
-                    entityId: charge.id,
-                    operation: 'upsert',
-                },
-                {
-                    entity: 'payment',
-                    entityId: payment.id,
-                    operation: 'upsert',
-                },
-            )
-
-            applied.push({
-                charge_id: charge.id,
-                charge_name: charge.name,
-                amount: serializeMoney(amount),
-            })
-        }
-
-        if (changes.length > 0) {
-            await recordCardChanges(
-                cardId,
-                syncVersion,
-                changes,
-                tx,
-            )
-        }
-
-        return { applied, remaining }
+    const result = await applyCardPayment(cardId, requestedAmount, {
+        asOfDate,
+        idempotency: {
+            requestId: `mcp:${idempotencyKey}`,
+            userId: token.user_id,
+        },
     })
+    if (result.status === 'not-found') {
+        throw new Error('card not found')
+    }
+    if (result.status === 'idempotency-conflict') {
+        throw new Error('payment request conflict')
+    }
 
     return textContent({
-        payments: result.applied,
+        payments: result.payments.map((payment) => ({
+            charge_id: payment.chargeId,
+            charge_name: payment.chargeName,
+            amount: serializeMoney(payment.amount),
+            scheduled_for: payment.scheduledFor,
+        })),
         unapplied_amount: serializeMoney(result.remaining),
     })
 }
@@ -472,12 +416,22 @@ async function summarizeCard(
     const charges = await db.charge.findMany({
         where: { card_id: cardId },
         include: { category: true },
-        orderBy: { created_at: 'asc' },
+        orderBy: [
+            { scheduled_for: 'asc' },
+            { created_at: 'asc' },
+        ],
     })
 
-    const total = charges.reduce((sum, charge) => sum + charge.amount, 0)
-    const paid = charges.reduce((sum, charge) => sum + charge.paid, 0)
-    const pendingCharges = charges.filter(
+    const accountingCharges = charges.filter(isAccountingCharge)
+    const total = accountingCharges.reduce(
+        (sum, charge) => sum + charge.amount,
+        0,
+    )
+    const paid = accountingCharges.reduce(
+        (sum, charge) => sum + charge.paid,
+        0,
+    )
+    const pendingCharges = accountingCharges.filter(
         (charge) => charge.amount > charge.paid,
     )
     const categories = await db.chargeCategory.findMany({
@@ -485,7 +439,7 @@ async function summarizeCard(
         orderBy: { name: 'asc' },
     })
     const byCategory = categories.map((category) => {
-        const categoryCharges = charges.filter(
+        const categoryCharges = accountingCharges.filter(
             (charge) => charge.category_id === category.id,
         )
         const spent = categoryCharges.reduce(
@@ -525,6 +479,7 @@ async function summarizeCard(
             amount: serializeMoney(charge.amount),
             paid: serializeMoney(charge.paid),
             pending: serializeMoney(charge.amount - charge.paid),
+            scheduled_for: charge.scheduled_for,
             created_at: charge.created_at,
         })),
         categories: byCategory,
@@ -600,7 +555,7 @@ const tools = [
     {
         name: 'create_charge',
         description:
-            'Create a charge on a card. Amount is expressed in pesos. Optional category creates/reuses a category.',
+            'Create a charge on a card. Amount is expressed in pesos. To create an installment plan, provide installment_count and first_installment_date together.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -608,6 +563,15 @@ const tools = [
                 name: { type: 'string' },
                 amount: { type: 'number' },
                 category: { type: 'string' },
+                installment_count: {
+                    type: 'integer',
+                    minimum: 2,
+                    maximum: 60,
+                },
+                first_installment_date: {
+                    type: 'string',
+                    format: 'date',
+                },
             },
             required: ['card_id', 'name', 'amount'],
             additionalProperties: false,
@@ -615,7 +579,8 @@ const tools = [
     },
     {
         name: 'pay_charge',
-        description: 'Mark one charge as fully paid.',
+        description:
+            'Mark one regular charge or installment as fully paid. Installment-plan summary charges are not directly payable.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -628,14 +593,30 @@ const tools = [
     {
         name: 'pay_card_amount',
         description:
-            'Apply a payment amount to pending charges in oldest-first order.',
+            'Apply a payment amount to due pending charges in scheduled-date order. Future installments are not prepaid. Reuse the same idempotency_key when retrying the same payment.',
         inputSchema: {
             type: 'object',
             properties: {
                 card_id: { type: 'string' },
                 amount: { type: 'number' },
+                idempotency_key: {
+                    type: 'string',
+                    description:
+                        'A unique client-generated key. Reuse it only when retrying this exact payment.',
+                },
+                as_of_date: {
+                    type: 'string',
+                    format: 'date',
+                    description:
+                        'Local YYYY-MM-DD cutoff for due charges. Reuse it with the idempotency key.',
+                },
             },
-            required: ['card_id', 'amount'],
+            required: [
+                'card_id',
+                'amount',
+                'idempotency_key',
+                'as_of_date',
+            ],
             additionalProperties: false,
         },
     },

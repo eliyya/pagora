@@ -1,9 +1,13 @@
 import type { SerializedCharge } from '@/lib/card-sync.types'
+import type { InstallmentPlanInput } from '@/lib/installments'
 
 export type ClientMutationType =
     | 'charge.create'
     | 'charge.update'
     | 'charge.delete'
+    | 'installment.create'
+    | 'installment.update'
+    | 'installment.delete'
 
 type ClientMutationBase<TType extends ClientMutationType> = {
     mutationId: string
@@ -36,10 +40,39 @@ export type ChargeDeleteMutation = ClientMutationBase<'charge.delete'> & {
     baseRevision: number
 }
 
+export type InstallmentPlanMutationPayload = InstallmentPlanInput & {
+    id: string
+    name: string
+    amount: number
+    categoryId?: string | null
+    categoryName?: string | null
+    installmentIds: string[]
+}
+
+export type InstallmentCreateMutation =
+    ClientMutationBase<'installment.create'> & {
+        plan: InstallmentPlanMutationPayload
+    }
+
+export type InstallmentUpdateMutation =
+    ClientMutationBase<'installment.update'> & {
+        plan: InstallmentPlanMutationPayload
+        baseRevision: number
+    }
+
+export type InstallmentDeleteMutation =
+    ClientMutationBase<'installment.delete'> & {
+        parentId: string
+        baseRevision: number
+    }
+
 export type ClientMutation =
     | ChargeCreateMutation
     | ChargeUpdateMutation
     | ChargeDeleteMutation
+    | InstallmentCreateMutation
+    | InstallmentUpdateMutation
+    | InstallmentDeleteMutation
 
 type ClientMutationResultBase<
     TType extends ClientMutationType,
@@ -61,7 +94,9 @@ export type AppliedClientMutationResult = ClientMutationResultBase<
 > & {
     cursor: number
     charge?: SerializedCharge
+    charges?: SerializedCharge[]
     deletedChargeId?: string
+    deletedChargeIds?: string[]
 }
 
 export type ConflictClientMutationResult = ClientMutationResultBase<
@@ -69,6 +104,7 @@ export type ConflictClientMutationResult = ClientMutationResultBase<
     'conflict'
 > & {
     serverCharge: SerializedCharge
+    serverCharges?: SerializedCharge[]
 }
 
 export type GoneClientMutationResult = ClientMutationResultBase<

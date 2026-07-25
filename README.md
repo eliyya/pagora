@@ -18,6 +18,8 @@ Pagora lets you:
 
 - Register credit cards and their basic billing details.
 - Add charges with a human-readable name and amount.
+- Split a purchase into scheduled monthly installments while keeping a
+  synchronized full-amount parent charge.
 - Track paid and pending amounts per charge.
 - Pay one specific charge.
 - Pay several charges in order with a single amount.
@@ -161,6 +163,13 @@ available. Client mutation IDs make retries idempotent, including the case
 where the server committed a command but its response never reached the
 browser. Causal dependencies preserve offline sequences such as
 create -> edit -> delete.
+
+Installment plans use one atomic outbox command for the parent and every
+monthly charge. The parent is an informational summary and is excluded from
+financial totals; each installment carries the payable amount and scheduled
+date. Paying an installment updates both rows in one server transaction.
+Card-level payment allocation is idempotent, skips the summary, and never
+prepays future installments.
 
 If another member changed the same charge first, Pagora keeps the conflict in
 IndexedDB and asks the user whether to accept the server version or retry the

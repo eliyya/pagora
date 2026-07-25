@@ -13,6 +13,13 @@ import {
     recordCardChanges,
     type CardChangeInput,
 } from '@/lib/card-changes'
+import { createChargeSet, dateOnlyToUtc } from '@/lib/charge-creation'
+import {
+    buildInstallmentSchedule,
+    isDateOnly,
+    MAX_INSTALLMENT_COUNT,
+    MIN_INSTALLMENT_COUNT,
+} from '@/lib/installments'
 import { serializeCharge } from '@/lib/card-sync'
 import type {
     ClientMutation,
@@ -48,6 +55,50 @@ const revisionSchema = z
     .min(0)
     .max(POSTGRES_INTEGER_MAX)
 
+const installmentPlanSchema = z
+    .object({
+        id: idSchema,
+        name: z.string().trim().min(1).max(500),
+        amount: amountSchema,
+        categoryId: categoryIdSchema,
+        categoryName: categoryNameSchema,
+        count: z
+            .number()
+            .int()
+            .min(MIN_INSTALLMENT_COUNT)
+            .max(MAX_INSTALLMENT_COUNT),
+        firstInstallmentDate: z.string().refine(isDateOnly),
+        installmentIds: z
+            .array(idSchema)
+            .min(MIN_INSTALLMENT_COUNT)
+            .max(MAX_INSTALLMENT_COUNT),
+    })
+    .strict()
+    .superRefine((plan, context) => {
+        if (plan.installmentIds.length !== plan.count) {
+            context.addIssue({
+                code: 'custom',
+                path: ['installmentIds'],
+                message: 'installment ids must match installment count',
+            })
+        }
+        const ids = [plan.id, ...plan.installmentIds]
+        if (new Set(ids).size !== ids.length) {
+            context.addIssue({
+                code: 'custom',
+                path: ['installmentIds'],
+                message: 'charge ids must be unique',
+            })
+        }
+        if (plan.amount < plan.count) {
+            context.addIssue({
+                code: 'custom',
+                path: ['amount'],
+                message: 'every installment must contain at least one cent',
+            })
+        }
+    })
+
 const clientMutationSchema = z.discriminatedUnion('type', [
     z
         .object({
@@ -81,6 +132,29 @@ const clientMutationSchema = z.discriminatedUnion('type', [
             ...mutationBaseSchema,
             type: z.literal('charge.delete'),
             chargeId: idSchema,
+            baseRevision: revisionSchema,
+        })
+        .strict(),
+    z
+        .object({
+            ...mutationBaseSchema,
+            type: z.literal('installment.create'),
+            plan: installmentPlanSchema,
+        })
+        .strict(),
+    z
+        .object({
+            ...mutationBaseSchema,
+            type: z.literal('installment.update'),
+            plan: installmentPlanSchema,
+            baseRevision: revisionSchema,
+        })
+        .strict(),
+    z
+        .object({
+            ...mutationBaseSchema,
+            type: z.literal('installment.delete'),
+            parentId: idSchema,
             baseRevision: revisionSchema,
         })
         .strict(),
@@ -287,18 +361,33 @@ async function resolveDependencies(
 function effectiveBaseRevision(
     mutation: Extract<
         ClientMutation,
-        { type: 'charge.update' | 'charge.delete' }
+        {
+            type:
+                | 'charge.update'
+                | 'charge.delete'
+                | 'installment.update'
+                | 'installment.delete'
+        }
     >,
     dependencies: Map<string, ClientMutationResult>,
 ) {
+    const targetId =
+        mutation.type === 'installment.update'
+            ? mutation.plan.id
+            : mutation.type === 'installment.delete'
+              ? mutation.parentId
+              : mutation.chargeId
     const dependencyIds = mutation.dependsOn ?? []
     for (let index = dependencyIds.length - 1; index >= 0; index -= 1) {
         const result = dependencies.get(dependencyIds[index])
-        if (
-            result?.status === 'applied' &&
-            result.charge?.id === mutation.chargeId
-        ) {
-            return result.charge.revision
+        if (result?.status === 'applied') {
+            const dependencyCharge =
+                result.charge?.id === targetId
+                    ? result.charge
+                    : result.charges?.find(
+                          (charge) => charge.id === targetId,
+                      )
+            if (dependencyCharge) return dependencyCharge.revision
         }
     }
     return mutation.baseRevision
@@ -342,7 +431,9 @@ async function createCharge(
             name: mutation.charge.name,
             amount: mutation.charge.amount,
             category_id: category.category?.id ?? null,
+            kind: 'single',
             revision: cursor,
+            scheduled_for: new Date(mutation.occurredAt),
             created_at: new Date(mutation.occurredAt),
         },
         include: { category: true },
@@ -386,6 +477,9 @@ async function updateCharge(
             ...resultBase(mutation),
             status: 'gone',
         }
+    }
+    if (current.kind !== 'single') {
+        return rejectedResult(mutation, 'installment-managed-as-plan')
     }
     if (
         current.revision !==
@@ -459,6 +553,9 @@ async function deleteCharge(
             status: 'gone',
         }
     }
+    if (current.kind !== 'single') {
+        return rejectedResult(mutation, 'installment-managed-as-plan')
+    }
     if (
         current.revision !==
         effectiveBaseRevision(mutation, dependencies)
@@ -490,6 +587,333 @@ async function deleteCharge(
         status: 'applied',
         cursor,
         deletedChargeId: mutation.chargeId,
+    }
+}
+
+async function createInstallmentPlan(
+    tx: Prisma.TransactionClient,
+    cardId: string,
+    mutation: Extract<ClientMutation, { type: 'installment.create' }>,
+): Promise<ClientMutationResult> {
+    const ids = [mutation.plan.id, ...mutation.plan.installmentIds]
+    const existing = await tx.charge.findFirst({
+        where: { id: { in: ids } },
+    })
+    if (existing) {
+        return rejectedResult(mutation, 'charge-id-in-use')
+    }
+
+    const category = await resolveCategory(
+        tx,
+        cardId,
+        mutation.plan.categoryId,
+        mutation.plan.categoryName,
+    )
+    if (category.status === 'rejected') {
+        return rejectedResult(mutation, category.reason)
+    }
+
+    const cursor = await beginCardChange(cardId, tx)
+    const created = await createChargeSet(
+        tx,
+        {
+            cardId,
+            chargeId: mutation.plan.id,
+            installmentIds: mutation.plan.installmentIds,
+            name: mutation.plan.name,
+            amount: mutation.plan.amount,
+            categoryId: category.category?.id ?? null,
+            categoryName: category.category?.name ?? null,
+            installment: {
+                count: mutation.plan.count,
+                firstInstallmentDate:
+                    mutation.plan.firstInstallmentDate,
+            },
+            createdAt: new Date(mutation.occurredAt),
+        },
+        cursor,
+    )
+    const changes: CardChangeInput[] = created.charges.map((charge) => ({
+        entity: 'charge',
+        entityId: charge.id,
+        operation: 'upsert',
+    }))
+    if (created.category) {
+        changes.unshift({
+            entity: 'category',
+            entityId: created.category.id,
+            operation: 'upsert',
+        })
+    }
+    await recordCardChanges(cardId, cursor, changes, tx)
+
+    return {
+        ...resultBase(mutation),
+        status: 'applied',
+        cursor,
+        charges: created.charges.map(serializeCharge),
+    }
+}
+
+async function updateInstallmentPlan(
+    tx: Prisma.TransactionClient,
+    cardId: string,
+    mutation: Extract<ClientMutation, { type: 'installment.update' }>,
+    dependencies: Map<string, ClientMutationResult>,
+): Promise<ClientMutationResult> {
+    const current = await tx.charge.findUnique({
+        where: { id: mutation.plan.id },
+        include: {
+            category: true,
+            installments: {
+                include: { category: true },
+                orderBy: { installment_number: 'asc' },
+            },
+        },
+    })
+    if (!current || current.card_id !== cardId) {
+        return { ...resultBase(mutation), status: 'gone' }
+    }
+    if (current.kind !== 'installment_parent') {
+        return rejectedResult(mutation, 'not-installment-parent')
+    }
+    if (
+        current.revision !==
+        effectiveBaseRevision(mutation, dependencies)
+    ) {
+        return {
+            ...resultBase(mutation),
+            status: 'conflict',
+            serverCharge: serializeCharge(current),
+            serverCharges: [current, ...current.installments].map(
+                serializeCharge,
+            ),
+        }
+    }
+
+    const hasPayments =
+        current.paid > 0 ||
+        current.installments.some((installment) => installment.paid > 0)
+    const currentInstallmentIds = current.installments.map(
+        (installment) => installment.id,
+    )
+    const currentFirstDate = current.installments[0]?.scheduled_for
+        .toISOString()
+        .slice(0, 10)
+    const structuralChange =
+        current.amount !== mutation.plan.amount ||
+        current.installment_count !== mutation.plan.count ||
+        currentFirstDate !== mutation.plan.firstInstallmentDate ||
+        currentInstallmentIds.length !==
+            mutation.plan.installmentIds.length ||
+        currentInstallmentIds.some(
+            (id, index) => id !== mutation.plan.installmentIds[index],
+        )
+    if (hasPayments && structuralChange) {
+        return rejectedResult(
+            mutation,
+            'paid-installment-structure-is-immutable',
+        )
+    }
+
+    const currentIds = new Set([
+        current.id,
+        ...currentInstallmentIds,
+    ])
+    const desiredIds = [
+        mutation.plan.id,
+        ...mutation.plan.installmentIds,
+    ]
+    const idCollision = await tx.charge.findFirst({
+        where: {
+            id: { in: desiredIds },
+            NOT: { id: { in: Array.from(currentIds) } },
+        },
+    })
+    if (idCollision) {
+        return rejectedResult(mutation, 'charge-id-in-use')
+    }
+
+    const category = await resolveCategory(
+        tx,
+        cardId,
+        mutation.plan.categoryId,
+        mutation.plan.categoryName,
+    )
+    if (category.status === 'rejected') {
+        return rejectedResult(mutation, category.reason)
+    }
+
+    const schedule = buildInstallmentSchedule({
+        name: mutation.plan.name,
+        amount: mutation.plan.amount,
+        count: mutation.plan.count,
+        firstInstallmentDate: mutation.plan.firstInstallmentDate,
+    })
+    const cursor = await beginCardChange(cardId, tx)
+    const removedIds = currentInstallmentIds.filter(
+        (id) => !mutation.plan.installmentIds.includes(id),
+    )
+
+    if (hasPayments) {
+        await tx.charge.update({
+            where: { id: current.id },
+            data: {
+                name: mutation.plan.name,
+                category_id: category.category?.id ?? null,
+                revision: cursor,
+            },
+        })
+        for (const [index, installment] of current.installments.entries()) {
+            await tx.charge.update({
+                where: { id: installment.id },
+                data: {
+                    name: schedule[index].name,
+                    category_id: category.category?.id ?? null,
+                    revision: cursor,
+                },
+            })
+        }
+    } else {
+        await tx.charge.deleteMany({
+            where: { installment_parent_id: current.id },
+        })
+        await tx.charge.update({
+            where: { id: current.id },
+            data: {
+                name: mutation.plan.name,
+                amount: mutation.plan.amount,
+                category_id: category.category?.id ?? null,
+                installment_count: mutation.plan.count,
+                scheduled_for: dateOnlyToUtc(
+                    mutation.plan.firstInstallmentDate,
+                ),
+                revision: cursor,
+            },
+        })
+        await tx.charge.createMany({
+            data: schedule.map((installment, index) => ({
+                id: mutation.plan.installmentIds[index],
+                card_id: cardId,
+                installment_parent_id: current.id,
+                name: installment.name,
+                amount: installment.amount,
+                category_id: category.category?.id ?? null,
+                kind: 'installment',
+                installment_number: installment.installmentNumber,
+                installment_count: installment.installmentCount,
+                scheduled_for: dateOnlyToUtc(installment.scheduledFor),
+                revision: cursor,
+                created_at: current.created_at,
+            })),
+        })
+    }
+
+    const updated = await tx.charge.findUniqueOrThrow({
+        where: { id: current.id },
+        include: {
+            category: true,
+            installments: {
+                include: { category: true },
+                orderBy: { installment_number: 'asc' },
+            },
+        },
+    })
+    const charges = [updated, ...updated.installments]
+    const changes: CardChangeInput[] = [
+        ...removedIds.map((id) => ({
+            entity: 'charge' as const,
+            entityId: id,
+            operation: 'delete' as const,
+        })),
+        ...charges.map((charge) => ({
+            entity: 'charge' as const,
+            entityId: charge.id,
+            operation: 'upsert' as const,
+        })),
+    ]
+    if (category.category) {
+        changes.unshift({
+            entity: 'category',
+            entityId: category.category.id,
+            operation: 'upsert',
+        })
+    }
+    await recordCardChanges(cardId, cursor, changes, tx)
+
+    return {
+        ...resultBase(mutation),
+        status: 'applied',
+        cursor,
+        charges: charges.map(serializeCharge),
+        deletedChargeIds: removedIds,
+    }
+}
+
+async function deleteInstallmentPlan(
+    tx: Prisma.TransactionClient,
+    cardId: string,
+    mutation: Extract<ClientMutation, { type: 'installment.delete' }>,
+    dependencies: Map<string, ClientMutationResult>,
+): Promise<ClientMutationResult> {
+    const current = await tx.charge.findUnique({
+        where: { id: mutation.parentId },
+        include: {
+            category: true,
+            installments: {
+                include: { category: true },
+                orderBy: { installment_number: 'asc' },
+            },
+        },
+    })
+    if (!current || current.card_id !== cardId) {
+        return { ...resultBase(mutation), status: 'gone' }
+    }
+    if (current.kind !== 'installment_parent') {
+        return rejectedResult(mutation, 'not-installment-parent')
+    }
+    if (
+        current.revision !==
+        effectiveBaseRevision(mutation, dependencies)
+    ) {
+        return {
+            ...resultBase(mutation),
+            status: 'conflict',
+            serverCharge: serializeCharge(current),
+            serverCharges: [current, ...current.installments].map(
+                serializeCharge,
+            ),
+        }
+    }
+    if (
+        current.paid > 0 ||
+        current.installments.some((installment) => installment.paid > 0)
+    ) {
+        return rejectedResult(mutation, 'paid-installment-cannot-be-deleted')
+    }
+
+    const deletedChargeIds = [
+        current.id,
+        ...current.installments.map((installment) => installment.id),
+    ]
+    const cursor = await beginCardChange(cardId, tx)
+    await tx.charge.delete({ where: { id: current.id } })
+    await recordCardChanges(
+        cardId,
+        cursor,
+        deletedChargeIds.map((id) => ({
+            entity: 'charge',
+            entityId: id,
+            operation: 'delete',
+        })),
+        tx,
+    )
+
+    return {
+        ...resultBase(mutation),
+        status: 'applied',
+        cursor,
+        deletedChargeIds,
     }
 }
 
@@ -555,6 +979,25 @@ async function applyMutation(
             break
         case 'charge.delete':
             result = await deleteCharge(
+                tx,
+                cardId,
+                mutation,
+                dependencies.results,
+            )
+            break
+        case 'installment.create':
+            result = await createInstallmentPlan(tx, cardId, mutation)
+            break
+        case 'installment.update':
+            result = await updateInstallmentPlan(
+                tx,
+                cardId,
+                mutation,
+                dependencies.results,
+            )
+            break
+        case 'installment.delete':
+            result = await deleteInstallmentPlan(
                 tx,
                 cardId,
                 mutation,

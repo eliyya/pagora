@@ -12,24 +12,41 @@ datasource db {
   provider = "postgresql"
 }
 
+enum ChargeKind {
+  single
+  installment_parent
+  installment
+}
+
 model Charge {
-  id          String   @id @default(dbgenerated("snowflake()"))
-  name        String
-  card_id     String
-  category_id String?
+  id                    String     @id @default(dbgenerated("snowflake()"))
+  name                  String
+  card_id               String
+  category_id           String?
+  kind                  ChargeKind @default(single)
+  installment_parent_id String?
+  installment_number    Int?
+  installment_count     Int?
   /// at int like 13.99 => 1399
-  amount      Int
+  amount                Int
   /// at int like 13.99 => 1399
-  paid        Int      @default(0)
-  revision    Int      @default(0)
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  paid                  Int        @default(0)
+  revision              Int        @default(0)
+  scheduled_for         DateTime   @default(now()) @db.Date
+  created_at            DateTime   @default(now())
+  updated_at            DateTime   @updatedAt
 
-  card         Card            @relation(fields: [card_id], references: [id], onDelete: Cascade)
-  category     ChargeCategory? @relation(fields: [category_id], references: [id], onDelete: SetNull)
-  payment_logs PaymentLog[]
+  card               Card            @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  category           ChargeCategory? @relation(fields: [category_id], references: [id], onDelete: SetNull)
+  installment_parent Charge?         @relation("ChargeInstallments", fields: [installment_parent_id, card_id], references: [id, card_id], onDelete: Cascade)
+  installments       Charge[]        @relation("ChargeInstallments")
+  payment_logs       PaymentLog[]
 
+  @@unique([id, card_id])
+  @@unique([installment_parent_id, installment_number])
   @@index([category_id])
+  @@index([installment_parent_id])
+  @@index([card_id, kind, scheduled_for])
   @@map("chargues")
 }
 

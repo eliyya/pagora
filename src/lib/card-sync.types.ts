@@ -6,6 +6,11 @@ export type DailySummary = {
 
 export type CardSyncAccess = 'read' | 'write' | 'owner'
 
+export type SerializedChargeKind =
+    | 'single'
+    | 'installment_parent'
+    | 'installment'
+
 export type SerializedChargeCategory = {
     id: string
     card_id: string
@@ -20,6 +25,11 @@ export type SerializedCharge = {
     name: string
     card_id: string
     category_id: string | null
+    kind: SerializedChargeKind
+    installment_parent_id: string | null
+    installment_number: number | null
+    installment_count: number | null
+    scheduled_for: string
     amount: number
     paid: number
     revision: number

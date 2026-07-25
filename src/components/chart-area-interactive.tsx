@@ -49,8 +49,10 @@ export function ChartAreaInteractive() {
     const summary = useInfo((s) => s.summary)
 
     const today = new Date()
+    const todayKey = `${today.getFullYear()}-${String(
+        today.getMonth() + 1,
+    ).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
     const filteredData = summary.filter((item) => {
-        const date = new Date(item.date)
         let daysToSubtract = 90
         if (timeRange === '30d') {
             daysToSubtract = 30
@@ -59,7 +61,10 @@ export function ChartAreaInteractive() {
         }
         const startDate = new Date(today)
         startDate.setDate(startDate.getDate() - daysToSubtract)
-        return date >= startDate
+        const startKey = `${startDate.getFullYear()}-${String(
+            startDate.getMonth() + 1,
+        ).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`
+        return item.date >= startKey && item.date <= todayKey
     })
 
     return (
@@ -159,6 +164,7 @@ export function ChartAreaInteractive() {
                                 return date.toLocaleDateString('en-US', {
                                     month: 'short',
                                     day: 'numeric',
+                                    timeZone: 'UTC',
                                 })
                             }}
                         />
@@ -172,6 +178,7 @@ export function ChartAreaInteractive() {
                                         ).toLocaleDateString('en-US', {
                                             month: 'short',
                                             day: 'numeric',
+                                            timeZone: 'UTC',
                                         })
                                     }}
                                     indicator='dot'
