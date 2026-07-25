@@ -18,11 +18,11 @@ function money(cents: number) {
     }).format(cents / 100)
 }
 
-function startOfMonth() {
+function monthKey(offset = 0) {
     const date = new Date()
     date.setDate(1)
-    date.setHours(0, 0, 0, 0)
-    return date
+    date.setMonth(date.getMonth() + offset)
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
 function CategoryBudgetCard({
@@ -128,10 +128,17 @@ export function BudgetCategoriesPanel() {
     const [budgetCents, setBudgetCents] = useState(0)
 
     const spentByCategory = useMemo(() => {
-        const monthStart = startOfMonth()
+        const currentMonth = monthKey()
         const map = new Map<string, number>()
         for (const charge of charges) {
-            if (!charge.category_id || charge.created_at < monthStart) continue
+            if (
+                charge.kind === 'installment_parent' ||
+                !charge.category_id ||
+                charge.scheduled_for.toISOString().slice(0, 7) !==
+                    currentMonth
+            ) {
+                continue
+            }
             map.set(
                 charge.category_id,
                 (map.get(charge.category_id) ?? 0) + charge.amount,

@@ -26,9 +26,11 @@ export function PayChargesDialog({
     const batchPayCharges = useInfo((s) => s.batchPayCharges)
     const formRef = useRef<HTMLFormElement>(null)
     const [error, setError] = useState('')
+    const [isSubmitting, setIsSubmitting] = useState(false)
 
     async function handleSubmit(e: FormEvent<HTMLFormElement>) {
         e.preventDefault()
+        if (isSubmitting) return
         const form = new FormData(e.currentTarget)
         const rawAmount = form.get('amount') as string
         const parsed = parseFloat(rawAmount)
@@ -39,20 +41,53 @@ export function PayChargesDialog({
         }
 
         const amount = Math.round(parsed * 100)
-        await batchPayCharges(amount)
-        formRef.current?.reset()
         setError('')
-        onOpenChange(false)
+        setIsSubmitting(true)
+        try {
+            const outcome = await batchPayCharges(amount)
+            if (!outcome) {
+                setError('The payment could not be applied.')
+                return
+            }
+            if (outcome.unappliedAmount > 0) {
+                const money = new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: 'USD',
+                })
+                setError(
+                    `${money.format(outcome.appliedAmount / 100)} was applied. ${money.format(outcome.unappliedAmount / 100)} was not applied because there are no more due charges.`,
+                )
+                if (outcome.appliedAmount > 0) formRef.current?.reset()
+                return
+            }
+
+            formRef.current?.reset()
+            setError('')
+            onOpenChange(false)
+        } finally {
+            setIsSubmitting(false)
+        }
     }
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className='sm:max-w-sm'>
+        <Dialog
+            open={open}
+            onOpenChange={(value) => {
+                if (isSubmitting) return
+                if (!value) {
+                    formRef.current?.reset()
+                    setError('')
+                }
+                onOpenChange(value)
+            }}
+        >
+            <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-sm'>
                 <form ref={formRef} onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle>Pay Charges</DialogTitle>
                         <DialogDescription>
-                            Pay the oldest unpaid charges with the given amount.
+                            Pay due charges in scheduled-date order. Future
+                            installments are not prepaid.
                         </DialogDescription>
                     </DialogHeader>
                     <FieldGroup>
@@ -63,16 +98,27 @@ export function PayChargesDialog({
                                 name='amount'
                                 type='number'
                                 step='0.01'
-                                min={0}
+                                min={0.01}
+                                required
+                                disabled={isSubmitting}
                             />
                             {error && <FieldError>{error}</FieldError>}
                         </Field>
                     </FieldGroup>
                     <DialogFooter>
                         <DialogClose
-                            render={<Button variant='outline'>Cancel</Button>}
+                            render={
+                                <Button
+                                    variant='outline'
+                                    disabled={isSubmitting}
+                                >
+                                    Cancel
+                                </Button>
+                            }
                         />
-                        <Button type='submit'>Pay</Button>
+                        <Button type='submit' disabled={isSubmitting}>
+                            {isSubmitting ? 'Paying…' : 'Pay'}
+                        </Button>
                     </DialogFooter>
                 </form>
             </DialogContent>

@@ -7,6 +7,7 @@ import type {
     Prisma,
 } from '@/db/generated/prisma/client'
 import { getCardAccess } from '@/lib/card-access'
+import { isAccountingCharge } from '@/lib/installments'
 import type {
     CardSyncPayload,
     CardSyncAccess,
@@ -38,7 +39,18 @@ export function serializeCharge(
     charge: ChargeWithCategory,
 ): SerializedCharge {
     return {
-        ...charge,
+        id: charge.id,
+        name: charge.name,
+        card_id: charge.card_id,
+        category_id: charge.category_id,
+        kind: charge.kind,
+        installment_parent_id: charge.installment_parent_id,
+        installment_number: charge.installment_number,
+        installment_count: charge.installment_count,
+        amount: charge.amount,
+        paid: charge.paid,
+        revision: charge.revision,
+        scheduled_for: charge.scheduled_for.toISOString().slice(0, 10),
         created_at: charge.created_at.toISOString(),
         updated_at: charge.updated_at.toISOString(),
         category: charge.category
@@ -58,7 +70,8 @@ async function buildDailySummary(
     >()
 
     for (const charge of charges) {
-        const date = charge.created_at.toISOString().slice(0, 10)
+        if (!isAccountingCharge(charge)) continue
+        const date = charge.scheduled_for.toISOString().slice(0, 10)
         const entry = values.get(date) ?? { payments: 0, charges: 0 }
         entry.charges += charge.amount / 100
         values.set(date, entry)
@@ -98,7 +111,10 @@ async function readSnapshot(
         tx.charge.findMany({
             where: { card_id: cardId },
             include: { category: true },
-            orderBy: { created_at: 'desc' },
+            orderBy: [
+                { scheduled_for: 'desc' },
+                { created_at: 'desc' },
+            ],
         }),
         tx.chargeCategory.findMany({
             where: { card_id: cardId },
@@ -164,6 +180,10 @@ async function readDelta(
                       id: { in: chargeIds },
                   },
                   include: { category: true },
+                  orderBy: [
+                      { scheduled_for: 'desc' },
+                      { created_at: 'desc' },
+                  ],
               }),
         categoryIds.length === 0
             ? Promise.resolve([])

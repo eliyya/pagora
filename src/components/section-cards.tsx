@@ -13,25 +13,32 @@ import { useInfo } from '@/stores/info.store'
 import { TrendingUpIcon, TrendingDownIcon } from 'lucide-react'
 import { useShallow } from 'zustand/shallow'
 
-function startOfMonth(offset = 0) {
-    const d = new Date()
-    d.setDate(1)
-    d.setMonth(d.getMonth() + offset)
-    d.setHours(0, 0, 0, 0)
-    return d
+function monthKey(offset = 0) {
+    const date = new Date()
+    date.setDate(1)
+    date.setMonth(date.getMonth() + offset)
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
 export function SectionCards() {
     const charges = useInfo(useShallow((s) => s.charges))
-
-    const totalPending = charges.reduce((a, b) => a + (b.amount - b.paid), 0)
-    const thisMonth = charges.filter(
-        (c) => c.created_at >= startOfMonth(0),
+    const billableCharges = charges.filter(
+        (charge) => charge.kind !== 'installment_parent',
     )
-    const lastMonth = charges.filter(
-        (c) =>
-            c.created_at >= startOfMonth(-1) &&
-            c.created_at < startOfMonth(0),
+
+    const totalPending = billableCharges.reduce(
+        (a, b) => a + (b.amount - b.paid),
+        0,
+    )
+    const currentMonth = monthKey()
+    const previousMonth = monthKey(-1)
+    const thisMonth = billableCharges.filter(
+        (charge) =>
+            charge.scheduled_for.toISOString().slice(0, 7) === currentMonth,
+    )
+    const lastMonth = billableCharges.filter(
+        (charge) =>
+            charge.scheduled_for.toISOString().slice(0, 7) === previousMonth,
     )
     const thisAmount = thisMonth.reduce((a, b) => a + b.amount, 0)
     const lastAmount = lastMonth.reduce((a, b) => a + b.amount, 0)
@@ -46,11 +53,14 @@ export function SectionCards() {
     const trendLabel = trendUp ? 'Trending up' : 'Trending down'
     const trendPct = `${trendUp ? '+' : ''}${trend.toFixed(1)}%`
 
-    const totalPaid = charges.reduce((a, b) => a + b.paid, 0)
-    const pendingCount = charges.filter((c) => c.amount > c.paid).length
+    const totalPaid = billableCharges.reduce((a, b) => a + b.paid, 0)
+    const pendingCount = billableCharges.filter(
+        (c) => c.amount > c.paid,
+    ).length
     const avgCharge =
-        charges.length > 0
-            ? charges.reduce((a, b) => a + b.amount, 0) / charges.length
+        billableCharges.length > 0
+            ? billableCharges.reduce((a, b) => a + b.amount, 0) /
+              billableCharges.length
             : 0
 
     return (
@@ -98,7 +108,7 @@ export function SectionCards() {
                     <CardAction>
                         <Badge variant='outline'>
                             <TrendingUpIcon />
-                            {charges.length} charges
+                            {billableCharges.length} charges
                         </Badge>
                     </CardAction>
                 </CardHeader>

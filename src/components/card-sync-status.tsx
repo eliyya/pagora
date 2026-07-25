@@ -30,7 +30,15 @@ function mutationDescription(conflict: StoredMutationConflict) {
     if (mutation.type === 'charge.update') {
         return `Update to “${mutation.name}” for ${(mutation.amount / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`
     }
-    return 'Delete this charge'
+    if (mutation.type === 'installment.create') {
+        return `Create “${mutation.plan.name}” in ${mutation.plan.count} installments for ${(mutation.plan.amount / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`
+    }
+    if (mutation.type === 'installment.update') {
+        return `Update installment plan “${mutation.plan.name}”`
+    }
+    return mutation.type === 'installment.delete'
+        ? 'Delete this installment plan'
+        : 'Delete this charge'
 }
 
 function conflictReason(conflict: StoredMutationConflict) {

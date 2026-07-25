@@ -45,6 +45,9 @@ import type {
     ChargeUpdateMutation,
     ClientMutation,
     ClientMutationResult,
+    InstallmentCreateMutation,
+    InstallmentDeleteMutation,
+    InstallmentUpdateMutation,
     PushCardMutationsResponse,
 } from '@/lib/card-mutations.types'
 import type {
@@ -55,6 +58,15 @@ import type {
 } from '@/lib/card-sync.types'
 import { toast } from 'sonner'
 import { create } from 'zustand'
+import {
+    buildInstallmentSchedule,
+    isAccountingCharge,
+    isDateOnly,
+    isInstallmentCharge,
+    isInstallmentParentCharge,
+    isValidInstallmentPlanInput,
+    type InstallmentPlanInput,
+} from '@/lib/installments'
 
 export type CardAccessLevel = 'none' | 'read' | 'write' | 'owner'
 export type SyncStatus =
@@ -94,6 +106,11 @@ type RuntimeCardCache = {
     summary: DailySummary[]
 }
 
+export type BatchPaymentOutcome = {
+    appliedAmount: number
+    unappliedAmount: number
+}
+
 interface InfoStore {
     user: User | null
     card: CardItem | null
@@ -125,18 +142,20 @@ interface InfoStore {
         amount: number,
         name: string,
         categoryName?: string,
+        installment?: InstallmentPlanInput,
     ): Promise<boolean>
     updateCharge(
         id: string,
         name: string,
         amount: number,
         categoryName?: string,
+        installment?: InstallmentPlanInput,
     ): Promise<boolean>
     deleteCharge(id: string): Promise<boolean>
     acceptServerConflict(mutationId: string): Promise<void>
     retryConflict(mutationId: string): Promise<void>
     paidCharge(id: string): Promise<void>
-    batchPayCharges(amount: number): Promise<void>
+    batchPayCharges(amount: number): Promise<BatchPaymentOutcome | null>
     createCategory(name: string, monthlyBudget: number): Promise<void>
     updateCategory(
         id: string,
@@ -203,6 +222,108 @@ function readPageSize() {
     return Number.isInteger(value) && value > 0 ? value : 10
 }
 
+function localDateOnly() {
+    const date = new Date()
+    return [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, '0'),
+        String(date.getDate()).padStart(2, '0'),
+    ].join('-')
+}
+
+type PendingBatchPayment = {
+    requestId: string
+    amount: number
+    asOfDate: string
+}
+
+const pendingBatchPayments = new Map<string, PendingBatchPayment>()
+
+function batchPaymentStorageKey(userId: string, cardId: string) {
+    return `pagora-payment:${userId}:${cardId}`
+}
+
+function getOrCreateBatchPaymentRequest(
+    userId: string,
+    cardId: string,
+    amount: number,
+): PendingBatchPayment {
+    const asOfDate = localDateOnly()
+    const key = batchPaymentStorageKey(userId, cardId)
+    if (typeof localStorage !== 'undefined') {
+        try {
+            const parsed = JSON.parse(
+                localStorage.getItem(key) ?? 'null',
+            ) as Partial<PendingBatchPayment> | null
+            if (
+                parsed &&
+                typeof parsed.requestId === 'string' &&
+                Number.isSafeInteger(parsed.amount) &&
+                (parsed.amount ?? 0) > 0 &&
+                isDateOnly(parsed.asOfDate)
+            ) {
+                const request = {
+                    requestId: parsed.requestId,
+                    amount: parsed.amount as number,
+                    asOfDate: parsed.asOfDate,
+                }
+                pendingBatchPayments.set(key, request)
+                return request
+            }
+        } catch {
+            try {
+                localStorage.removeItem(key)
+            } catch {
+                // Fall through to the in-memory copy.
+            }
+        }
+    }
+
+    const inMemory = pendingBatchPayments.get(key)
+    if (inMemory) return inMemory
+
+    const request = {
+        requestId: crypto.randomUUID(),
+        amount,
+        asOfDate,
+    }
+    pendingBatchPayments.set(key, request)
+    if (typeof localStorage !== 'undefined') {
+        try {
+            localStorage.setItem(key, JSON.stringify(request))
+        } catch {
+            // The server-side idempotency key still protects this attempt.
+        }
+    }
+    return request
+}
+
+function clearBatchPaymentRequest(
+    userId: string,
+    cardId: string,
+    requestId: string,
+) {
+    const key = batchPaymentStorageKey(userId, cardId)
+    if (pendingBatchPayments.get(key)?.requestId === requestId) {
+        pendingBatchPayments.delete(key)
+    }
+    if (typeof localStorage === 'undefined') return
+    try {
+        const parsed = JSON.parse(
+            localStorage.getItem(key) ?? 'null',
+        ) as Partial<PendingBatchPayment> | null
+        if (parsed?.requestId === requestId) {
+            localStorage.removeItem(key)
+        }
+    } catch {
+        try {
+            localStorage.removeItem(key)
+        } catch {
+            // The matching in-memory request was already cleared.
+        }
+    }
+}
+
 function deserializeCategory(
     category: SerializedChargeCategory,
 ): ChargeCategory {
@@ -224,8 +345,25 @@ function serializeCategory(
 }
 
 function deserializeCharge(charge: SerializedCharge): ChargeWithCategory {
+    const kind = charge.kind ?? 'single'
+    const scheduledFor =
+        charge.scheduled_for ?? charge.created_at.slice(0, 10)
     return {
         ...charge,
+        kind,
+        installment_parent_id:
+            kind === 'installment'
+                ? (charge.installment_parent_id ?? null)
+                : null,
+        installment_number:
+            kind === 'installment'
+                ? (charge.installment_number ?? null)
+                : null,
+        installment_count:
+            kind === 'single'
+                ? null
+                : (charge.installment_count ?? null),
+        scheduled_for: new Date(`${scheduledFor}T00:00:00.000Z`),
         created_at: new Date(charge.created_at),
         updated_at: new Date(charge.updated_at),
         category: charge.category
@@ -237,12 +375,21 @@ function deserializeCharge(charge: SerializedCharge): ChargeWithCategory {
 function serializeCharge(charge: ChargeWithCategory): SerializedCharge {
     return {
         ...charge,
+        scheduled_for: charge.scheduled_for.toISOString().slice(0, 10),
         created_at: charge.created_at.toISOString(),
         updated_at: charge.updated_at.toISOString(),
         category: charge.category
             ? serializeCategory(charge.category)
             : null,
     }
+}
+
+function runtimeDateFromDateOnly(value: string) {
+    return new Date(`${value}T00:00:00.000Z`)
+}
+
+function occurredDateOnly(value: string) {
+    return new Date(value).toISOString().slice(0, 10)
 }
 
 function isCardAccess(value: unknown): value is CardAccessLevel {
@@ -294,6 +441,7 @@ function deserializeCache(cache: StoredCardCache): RuntimeCardCache | null {
                     charge.card_id !== runtime.cardId ||
                     !Number.isSafeInteger(charge.revision) ||
                     charge.revision < 0 ||
+                    Number.isNaN(charge.scheduled_for.getTime()) ||
                     Number.isNaN(charge.created_at.getTime()) ||
                     Number.isNaN(charge.updated_at.getTime()) ||
                     (charge.category !== null &&
@@ -384,7 +532,8 @@ function rebuildChargeTotals(
     )
 
     for (const charge of charges) {
-        const date = charge.created_at.toISOString().slice(0, 10)
+        if (!isAccountingCharge(charge)) continue
+        const date = charge.scheduled_for.toISOString().slice(0, 10)
         const entry = values.get(date) ?? {
             date,
             payments: 0,
@@ -447,7 +596,11 @@ function applySyncPayload(
             ? categories.get(charge.category_id)
             : null
         return category ? { ...charge, category } : charge
-    }).sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
+    }).sort(
+        (a, b) =>
+            b.scheduled_for.getTime() - a.scheduled_for.getTime() ||
+            b.created_at.getTime() - a.created_at.getTime(),
+    )
 
     const hasNewerLocalCharge = cache.charges.some(
         (charge) => charge.revision > payload.cursor,
@@ -469,9 +622,25 @@ function applySyncPayload(
 }
 
 function mutationChargeId(mutation: ClientMutation) {
-    return mutation.type === 'charge.create'
-        ? mutation.charge.id
-        : mutation.chargeId
+    if (mutation.type === 'charge.create') return mutation.charge.id
+    if (
+        mutation.type === 'installment.create' ||
+        mutation.type === 'installment.update'
+    ) {
+        return mutation.plan.id
+    }
+    if (mutation.type === 'installment.delete') return mutation.parentId
+    return mutation.chargeId
+}
+
+function mutationChargeIds(mutation: ClientMutation) {
+    if (
+        mutation.type === 'installment.create' ||
+        mutation.type === 'installment.update'
+    ) {
+        return [mutation.plan.id, ...mutation.plan.installmentIds]
+    }
+    return [mutationChargeId(mutation)]
 }
 
 function materializePendingMutations(
@@ -527,6 +696,15 @@ function materializePendingMutations(
                 name: mutation.charge.name,
                 amount: mutation.charge.amount,
                 paid: current?.paid ?? 0,
+                kind: 'single',
+                installment_parent_id: null,
+                installment_number: null,
+                installment_count: null,
+                scheduled_for:
+                    current?.scheduled_for ??
+                    runtimeDateFromDateOnly(
+                        occurredDateOnly(mutation.occurredAt),
+                    ),
                 category_id: category?.id ?? null,
                 category,
                 revision: current?.revision ?? cache.cursor ?? 0,
@@ -538,7 +716,7 @@ function materializePendingMutations(
 
         if (mutation.type === 'charge.update') {
             const current = charges.get(mutation.chargeId)
-            if (!current) continue
+            if (!current || current.kind !== 'single') continue
             const category = resolveCategory(
                 mutation,
                 mutation.categoryId,
@@ -555,11 +733,111 @@ function materializePendingMutations(
             continue
         }
 
-        charges.delete(mutation.chargeId)
+        if (mutation.type === 'charge.delete') {
+            const current = charges.get(mutation.chargeId)
+            if (current?.kind === 'single') {
+                charges.delete(mutation.chargeId)
+            }
+            continue
+        }
+
+        if (
+            mutation.type === 'installment.create' ||
+            mutation.type === 'installment.update'
+        ) {
+            const plan = mutation.plan
+            const category = resolveCategory(
+                mutation,
+                plan.categoryId,
+                plan.categoryName,
+            )
+            const occurredAt = new Date(mutation.occurredAt)
+            const currentParent = charges.get(plan.id)
+            const schedule = buildInstallmentSchedule({
+                name: plan.name,
+                amount: plan.amount,
+                count: plan.count,
+                firstInstallmentDate: plan.firstInstallmentDate,
+            })
+            const desiredIds = new Set(plan.installmentIds)
+
+            for (const charge of Array.from(charges.values())) {
+                if (
+                    charge.installment_parent_id === plan.id &&
+                    !desiredIds.has(charge.id)
+                ) {
+                    charges.delete(charge.id)
+                }
+            }
+
+            charges.set(plan.id, {
+                id: plan.id,
+                card_id: cache.cardId,
+                name: plan.name,
+                amount: plan.amount,
+                paid: currentParent?.paid ?? 0,
+                kind: 'installment_parent',
+                installment_parent_id: null,
+                installment_number: null,
+                installment_count: plan.count,
+                scheduled_for: runtimeDateFromDateOnly(
+                    plan.firstInstallmentDate,
+                ),
+                category_id: category?.id ?? null,
+                category,
+                revision:
+                    currentParent?.revision ?? cache.cursor ?? 0,
+                created_at: currentParent?.created_at ?? occurredAt,
+                updated_at: occurredAt,
+            })
+
+            schedule.forEach((installment, index) => {
+                const id = plan.installmentIds[index]
+                const current = charges.get(id)
+                charges.set(id, {
+                    id,
+                    card_id: cache.cardId,
+                    name: installment.name,
+                    amount: installment.amount,
+                    paid: current?.paid ?? 0,
+                    kind: 'installment',
+                    installment_parent_id: plan.id,
+                    installment_number:
+                        installment.installmentNumber,
+                    installment_count: installment.installmentCount,
+                    scheduled_for: runtimeDateFromDateOnly(
+                        installment.scheduledFor,
+                    ),
+                    category_id: category?.id ?? null,
+                    category,
+                    revision:
+                        current?.revision ??
+                        currentParent?.revision ??
+                        cache.cursor ??
+                        0,
+                    created_at:
+                        current?.created_at ??
+                        currentParent?.created_at ??
+                        occurredAt,
+                    updated_at: occurredAt,
+                })
+            })
+            continue
+        }
+
+        charges.delete(mutation.parentId)
+        for (const charge of Array.from(charges.values())) {
+            if (charge.installment_parent_id === mutation.parentId) {
+                charges.delete(charge.id)
+            }
+        }
     }
 
     const nextCharges = Array.from(charges.values()).sort(
-        (left, right) => right.created_at.getTime() - left.created_at.getTime(),
+        (left, right) =>
+            right.scheduled_for.getTime() -
+                left.scheduled_for.getTime() ||
+            right.created_at.getTime() - left.created_at.getTime(),
     )
     return {
         ...cache,
@@ -608,8 +886,27 @@ function applyMutationResults(
             continue
         }
         if (result.status === 'applied') {
-            if (result.charge) {
-                const charge = deserializeCharge(result.charge)
+            const deletedIds = [
+                ...(result.deletedChargeId
+                    ? [result.deletedChargeId]
+                    : []),
+                ...(result.deletedChargeIds ?? []),
+            ]
+            for (const deletedId of new Set(deletedIds)) {
+                const current = charges.get(deletedId)
+                if (!current || current.revision <= result.cursor) {
+                    charges.delete(deletedId)
+                }
+            }
+
+            const upserts = [
+                ...(result.charge ? [result.charge] : []),
+                ...(result.charges ?? []),
+            ]
+            for (const serialized of new Map(
+                upserts.map((charge) => [charge.id, charge]),
+            ).values()) {
+                const charge = deserializeCharge(serialized)
                 const current = charges.get(charge.id)
                 if (!current || current.revision <= charge.revision) {
                     charges.set(charge.id, charge)
@@ -618,26 +915,27 @@ function applyMutationResults(
                     }
                 }
             }
-            if (result.deletedChargeId) {
-                const current = charges.get(result.deletedChargeId)
-                if (!current || current.revision <= result.cursor) {
-                    charges.delete(result.deletedChargeId)
-                }
-            }
         } else if (result.status === 'conflict') {
-            const charge = deserializeCharge(result.serverCharge)
-            const current = charges.get(charge.id)
-            if (!current || current.revision <= charge.revision) {
-                charges.set(charge.id, charge)
-                if (charge.category) {
-                    categories.set(charge.category.id, charge.category)
+            const serverCharges =
+                result.serverCharges ?? [result.serverCharge]
+            for (const serialized of serverCharges) {
+                const charge = deserializeCharge(serialized)
+                const current = charges.get(charge.id)
+                if (!current || current.revision <= charge.revision) {
+                    charges.set(charge.id, charge)
+                    if (charge.category) {
+                        categories.set(charge.category.id, charge.category)
+                    }
                 }
             }
         }
     }
 
     const nextCharges = Array.from(charges.values()).sort(
-        (left, right) => right.created_at.getTime() - left.created_at.getTime(),
+        (left, right) =>
+            right.scheduled_for.getTime() -
+                left.scheduled_for.getTime() ||
+            right.created_at.getTime() - left.created_at.getTime(),
     )
     return {
         ...cache,
@@ -1236,13 +1534,29 @@ export const useInfo = create<InfoStore>((set, get) => ({
                                     ? record.mutation.charge.categoryId
                                     : record.mutation.type === 'charge.update'
                                       ? record.mutation.categoryId
-                                      : null
+                                      : record.mutation.type ===
+                                              'installment.create' ||
+                                            record.mutation.type ===
+                                                'installment.update'
+                                        ? record.mutation.plan.categoryId
+                                       : null
+                            const returnedCharge =
+                                result.status === 'applied'
+                                    ? (result.charge ??
+                                      result.charges?.find(
+                                          (charge) =>
+                                              charge.id ===
+                                              mutationChargeId(
+                                                  record.mutation,
+                                              ),
+                                      ))
+                                    : undefined
                             if (
                                 result.status === 'applied' &&
-                                result.charge &&
+                                returnedCharge &&
                                 requestedCategoryId &&
                                 requestedCategoryId !==
-                                    result.charge.category_id
+                                    returnedCharge.category_id
                             ) {
                                 forceSnapshot = true
                             }
@@ -1252,7 +1566,10 @@ export const useInfo = create<InfoStore>((set, get) => ({
                             if (
                                 result.status === 'applied' ||
                                 (result.status === 'gone' &&
-                                    record.mutation.type === 'charge.delete')
+                                    (record.mutation.type ===
+                                        'charge.delete' ||
+                                        record.mutation.type ===
+                                            'installment.delete'))
                             ) {
                                 acknowledged.push(result.mutationId)
                             } else {
@@ -1399,7 +1716,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
         }
     },
 
-    createCharge: async (amount, name, categoryName) => {
+    createCharge: async (amount, name, categoryName, installment) => {
         const state = get()
         if (state.cardAccess !== 'owner' && state.cardAccess !== 'write') {
             return false
@@ -1413,7 +1730,10 @@ export const useInfo = create<InfoStore>((set, get) => ({
             (trimmedCategory?.length ?? 0) > MAX_CATEGORY_NAME_LENGTH ||
             !Number.isSafeInteger(amount) ||
             amount <= 0 ||
-            amount > POSTGRES_INTEGER_MAX
+            amount > POSTGRES_INTEGER_MAX ||
+            (installment !== undefined &&
+                (!isValidInstallmentPlanInput(installment) ||
+                    amount < installment.count))
         ) {
             toast.error('El nombre, la categoría o el monto no son válidos.')
             return false
@@ -1443,20 +1763,44 @@ export const useInfo = create<InfoStore>((set, get) => ({
                               category.name === normalizedCategory,
                       )
                     : null
-                const mutation: ChargeCreateMutation = {
-                    mutationId: crypto.randomUUID(),
-                    type: 'charge.create',
-                    occurredAt: new Date().toISOString(),
-                    charge: {
-                        id: crypto.randomUUID(),
-                        name: trimmedName,
-                        amount,
-                        categoryId: normalizedCategory
-                            ? (existingCategory?.id ?? crypto.randomUUID())
-                            : null,
-                        categoryName: normalizedCategory,
-                    },
-                }
+                const mutationId = crypto.randomUUID()
+                const chargeId = crypto.randomUUID()
+                const occurredAt = new Date().toISOString()
+                const categoryId = normalizedCategory
+                    ? (existingCategory?.id ?? crypto.randomUUID())
+                    : null
+                const mutation:
+                    | ChargeCreateMutation
+                    | InstallmentCreateMutation = installment
+                    ? {
+                          mutationId,
+                          type: 'installment.create',
+                          occurredAt,
+                          plan: {
+                              id: chargeId,
+                              name: trimmedName,
+                              amount,
+                              categoryId,
+                              categoryName: normalizedCategory,
+                              ...installment,
+                              installmentIds: Array.from(
+                                  { length: installment.count },
+                                  () => crypto.randomUUID(),
+                              ),
+                          },
+                      }
+                    : {
+                          mutationId,
+                          type: 'charge.create',
+                          occurredAt,
+                          charge: {
+                              id: chargeId,
+                              name: trimmedName,
+                              amount,
+                              categoryId,
+                              categoryName: normalizedCategory,
+                          },
+                      }
                 const visible = materializeMutation(cache, mutation)
                 await saveOptimisticCardMutation(
                     serializeCache(visible),
@@ -1487,7 +1831,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
         }
     },
 
-    updateCharge: async (id, name, amount, categoryName) => {
+    updateCharge: async (id, name, amount, categoryName, installment) => {
         const state = get()
         if (state.cardAccess !== 'owner' && state.cardAccess !== 'write') {
             return false
@@ -1501,13 +1845,27 @@ export const useInfo = create<InfoStore>((set, get) => ({
             (trimmedCategory?.length ?? 0) > MAX_CATEGORY_NAME_LENGTH ||
             !Number.isSafeInteger(amount) ||
             amount <= 0 ||
-            amount > POSTGRES_INTEGER_MAX
+            amount > POSTGRES_INTEGER_MAX ||
+            (installment !== undefined &&
+                (!isValidInstallmentPlanInput(installment) ||
+                    amount < installment.count))
         ) {
             toast.error('El nombre, la categoría o el monto no son válidos.')
             return false
         }
         const current = state.charges.find((charge) => charge.id === id)
         if (!current) return false
+        if (isInstallmentCharge(current)) {
+            toast.error('Edita el cargo principal de este plan.')
+            return false
+        }
+        if (
+            isInstallmentParentCharge(current) &&
+            !isValidInstallmentPlanInput(installment)
+        ) {
+            toast.error('El plan de mensualidades no es válido.')
+            return false
+        }
 
         const userId = state.activeUserId
         const cardId = state.activeCardId
@@ -1539,21 +1897,86 @@ export const useInfo = create<InfoStore>((set, get) => ({
                               category.name === normalizedCategory,
                       )
                     : null
-                const mutation: ChargeUpdateMutation = {
-                    mutationId: crypto.randomUUID(),
-                    type: 'charge.update',
-                    occurredAt: new Date().toISOString(),
-                    dependsOn: latestPending
-                        ? [latestPending.mutationId]
-                        : undefined,
-                    chargeId: id,
-                    baseRevision: current.revision,
-                    name: trimmedName,
-                    amount,
-                    categoryId: normalizedCategory
-                        ? (existingCategory?.id ?? crypto.randomUUID())
-                        : null,
-                    categoryName: normalizedCategory,
+                const mutationId = crypto.randomUUID()
+                const occurredAt = new Date().toISOString()
+                const dependsOn = latestPending
+                    ? [latestPending.mutationId]
+                    : undefined
+                const categoryId = normalizedCategory
+                    ? (existingCategory?.id ?? crypto.randomUUID())
+                    : null
+                let mutation:
+                    | ChargeUpdateMutation
+                    | InstallmentUpdateMutation
+                if (isInstallmentParentCharge(current) && installment) {
+                    const currentInstallments = cache.charges
+                        .filter(
+                            (charge) =>
+                                charge.installment_parent_id === id,
+                        )
+                        .sort(
+                            (left, right) =>
+                                (left.installment_number ?? 0) -
+                                (right.installment_number ?? 0),
+                        )
+                    const hasPayments =
+                        current.paid > 0 ||
+                        currentInstallments.some(
+                            (charge) => charge.paid > 0,
+                        )
+                    const currentFirstDate =
+                        currentInstallments[0]?.scheduled_for
+                            .toISOString()
+                            .slice(0, 10)
+                    if (
+                        hasPayments &&
+                        (amount !== current.amount ||
+                            installment.count !==
+                                current.installment_count ||
+                            installment.firstInstallmentDate !==
+                                currentFirstDate)
+                    ) {
+                        toast.error(
+                            'Después de registrar pagos solo puedes cambiar el nombre o la categoría.',
+                        )
+                        return false
+                    }
+
+                    const installmentIds = Array.from(
+                        { length: installment.count },
+                        (_, index) =>
+                            currentInstallments[index]?.id ??
+                            crypto.randomUUID(),
+                    )
+                    mutation = {
+                        mutationId,
+                        type: 'installment.update',
+                        occurredAt,
+                        dependsOn,
+                        baseRevision: current.revision,
+                        plan: {
+                            id,
+                            name: trimmedName,
+                            amount,
+                            categoryId,
+                            categoryName: normalizedCategory,
+                            ...installment,
+                            installmentIds,
+                        },
+                    }
+                } else {
+                    mutation = {
+                        mutationId,
+                        type: 'charge.update',
+                        occurredAt,
+                        dependsOn,
+                        chargeId: id,
+                        baseRevision: current.revision,
+                        name: trimmedName,
+                        amount,
+                        categoryId,
+                        categoryName: normalizedCategory,
+                    }
                 }
                 const visible = materializeMutation(cache, mutation)
                 await saveOptimisticCardMutation(
@@ -1593,6 +2016,24 @@ export const useInfo = create<InfoStore>((set, get) => ({
         if (!state.activeCardId || !state.activeUserId) return false
         const current = state.charges.find((charge) => charge.id === id)
         if (!current) return false
+        if (isInstallmentCharge(current)) {
+            toast.error('Elimina el cargo principal de este plan.')
+            return false
+        }
+        if (
+            isInstallmentParentCharge(current) &&
+            (current.paid > 0 ||
+                state.charges.some(
+                    (charge) =>
+                        charge.installment_parent_id === current.id &&
+                        charge.paid > 0,
+                ))
+        ) {
+            toast.error(
+                'No puedes eliminar un plan que ya tiene pagos registrados.',
+            )
+            return false
+        }
 
         const userId = state.activeUserId
         const cardId = state.activeCardId
@@ -1616,16 +2057,30 @@ export const useInfo = create<InfoStore>((set, get) => ({
                           emptyCache(userId, cardId))
                         : emptyCache(userId, cardId)
                 }
-                const mutation: ChargeDeleteMutation = {
-                    mutationId: crypto.randomUUID(),
-                    type: 'charge.delete',
-                    occurredAt: new Date().toISOString(),
-                    dependsOn: latestPending
-                        ? [latestPending.mutationId]
-                        : undefined,
-                    chargeId: id,
-                    baseRevision: current.revision,
-                }
+                const mutation:
+                    | ChargeDeleteMutation
+                    | InstallmentDeleteMutation =
+                    isInstallmentParentCharge(current)
+                        ? {
+                              mutationId: crypto.randomUUID(),
+                              type: 'installment.delete',
+                              occurredAt: new Date().toISOString(),
+                              dependsOn: latestPending
+                                  ? [latestPending.mutationId]
+                                  : undefined,
+                              parentId: id,
+                              baseRevision: current.revision,
+                          }
+                        : {
+                              mutationId: crypto.randomUUID(),
+                              type: 'charge.delete',
+                              occurredAt: new Date().toISOString(),
+                              dependsOn: latestPending
+                                  ? [latestPending.mutationId]
+                                  : undefined,
+                              chargeId: id,
+                              baseRevision: current.revision,
+                          }
                 const visible = materializeMutation(cache, mutation)
                 await saveOptimisticCardMutation(
                     serializeCache(visible),
@@ -1681,12 +2136,15 @@ export const useInfo = create<InfoStore>((set, get) => ({
                 } else if (
                     conflict?.result.status === 'gone' ||
                     (conflict?.result.status === 'rejected' &&
-                        conflict.mutation.type === 'charge.create')
+                        (conflict.mutation.type === 'charge.create' ||
+                            conflict.mutation.type ===
+                                'installment.create'))
                 ) {
+                    const affectedIds = new Set(
+                        mutationChargeIds(conflict.mutation),
+                    )
                     const charges = invalidated.charges.filter(
-                        (charge) =>
-                            charge.id !==
-                            mutationChargeId(conflict.mutation),
+                        (charge) => !affectedIds.has(charge.id),
                     )
                     invalidated = {
                         ...invalidated,
@@ -1768,6 +2226,20 @@ export const useInfo = create<InfoStore>((set, get) => ({
                             id: crypto.randomUUID(),
                         },
                     }
+                } else if (original.type === 'installment.create') {
+                    retry = {
+                        ...original,
+                        mutationId: crypto.randomUUID(),
+                        occurredAt: new Date().toISOString(),
+                        dependsOn: undefined,
+                        plan: {
+                            ...original.plan,
+                            id: crypto.randomUUID(),
+                            installmentIds: original.plan.installmentIds.map(
+                                () => crypto.randomUUID(),
+                            ),
+                        },
+                    }
                 } else if (original.type === 'charge.update') {
                     if (serverCharge) {
                         retry = {
@@ -1788,6 +2260,30 @@ export const useInfo = create<InfoStore>((set, get) => ({
                                 amount: original.amount,
                                 categoryId: original.categoryId,
                                 categoryName: original.categoryName,
+                            },
+                        }
+                    }
+                } else if (original.type === 'installment.update') {
+                    if (serverCharge) {
+                        retry = {
+                            ...original,
+                            mutationId: crypto.randomUUID(),
+                            occurredAt: new Date().toISOString(),
+                            dependsOn,
+                            baseRevision: serverCharge.revision,
+                        }
+                    } else {
+                        retry = {
+                            mutationId: crypto.randomUUID(),
+                            type: 'installment.create',
+                            occurredAt: new Date().toISOString(),
+                            plan: {
+                                ...original.plan,
+                                id: crypto.randomUUID(),
+                                installmentIds:
+                                    original.plan.installmentIds.map(
+                                        () => crypto.randomUUID(),
+                                    ),
                             },
                         }
                     }
@@ -1852,12 +2348,15 @@ export const useInfo = create<InfoStore>((set, get) => ({
         const latest = get()
         if (
             pending.some(
-                (record) => mutationChargeId(record.mutation) === id,
+                (record) =>
+                    mutationChargeIds(record.mutation).includes(id),
             ) ||
             (isActiveCard(latest, userId, cardId) &&
                 latest.syncConflicts.some(
                     (conflict) =>
-                        mutationChargeId(conflict.mutation) === id,
+                        mutationChargeIds(conflict.mutation).includes(
+                            id,
+                        ),
                 )) ||
             (isActiveCard(latest, userId, cardId) &&
                 (latest.syncStatus === 'offline' ||
@@ -1880,11 +2379,22 @@ export const useInfo = create<InfoStore>((set, get) => ({
             return
         }
 
-        const charges = get().charges.map((charge) =>
-            charge.id === result.data.id
-                ? { ...charge, ...result.data, category: charge.category }
-                : charge,
+        const related = new Map(
+            result.relatedCharges.map((charge) => [charge.id, charge]),
         )
+        const charges = get().charges.map((charge) => {
+            const updated = related.get(charge.id)
+            return updated
+                ? {
+                      ...charge,
+                      ...updated,
+                      category:
+                          'category' in updated
+                              ? updated.category
+                              : charge.category,
+                  }
+                : charge
+        })
         set({ charges })
         await persistActiveCache(get())
         syncAfterMutation(userId, cardId)
@@ -1892,52 +2402,104 @@ export const useInfo = create<InfoStore>((set, get) => ({
 
     batchPayCharges: async (amount) => {
         const state = get()
-        if (state.cardAccess !== 'owner' && state.cardAccess !== 'write') return
-        if (!state.activeCardId || !state.activeUserId || amount <= 0) return
+        if (state.cardAccess !== 'owner' && state.cardAccess !== 'write') {
+            return null
+        }
+        if (
+            !state.activeCardId ||
+            !state.activeUserId ||
+            !Number.isSafeInteger(amount) ||
+            amount <= 0
+        ) {
+            return null
+        }
         const userId = state.activeUserId
         const cardId = state.activeCardId
 
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-            toast.error('Conéctate para registrar pagos.')
-            return
-        }
-        await get().syncCard(cardId, userId)
-        const pending = await listPendingCardMutations(userId, cardId)
-        const latest = get()
-        if (
-            pending.length > 0 ||
-            (isActiveCard(latest, userId, cardId) &&
-                latest.syncConflicts.length > 0) ||
-            (isActiveCard(latest, userId, cardId) &&
-                (latest.syncStatus === 'offline' ||
-                    latest.syncStatus === 'error' ||
-                    latest.syncStatus === 'unauthorized'))
-        ) {
-            toast.error(
-                'Sincroniza todos los cargos pendientes antes de aplicar un pago.',
-            )
-            return
-        }
+        return await serializeCardEnqueue(
+            `payment:${userId}:${cardId}`,
+            async () => {
+                if (
+                    typeof navigator !== 'undefined' &&
+                    navigator.onLine === false
+                ) {
+                    toast.error('Conéctate para registrar pagos.')
+                    return null
+                }
+                await get().syncCard(cardId, userId)
+                const pending = await listPendingCardMutations(userId, cardId)
+                const latest = get()
+                if (
+                    pending.length > 0 ||
+                    (isActiveCard(latest, userId, cardId) &&
+                        latest.syncConflicts.length > 0) ||
+                    (isActiveCard(latest, userId, cardId) &&
+                        (latest.syncStatus === 'offline' ||
+                            latest.syncStatus === 'error' ||
+                            latest.syncStatus === 'unauthorized'))
+                ) {
+                    toast.error(
+                        'Sincroniza todos los cargos pendientes antes de aplicar un pago.',
+                    )
+                    return null
+                }
 
-        const result = await batchPayChargesAction(cardId, amount).catch(
-            () => null,
-        )
-        if (!result || !('data' in result) || !result.data) {
-            toast.error('No se pudo aplicar el pago.')
-            return
-        }
-        if (!isActiveCard(get(), userId, cardId)) {
-            syncAfterMutation(userId, cardId)
-            return
-        }
+                const request = getOrCreateBatchPaymentRequest(
+                    userId,
+                    cardId,
+                    amount,
+                )
+                const recoveredPreviousRequest =
+                    request.amount !== amount ||
+                    request.asOfDate !== localDateOnly()
+                const result = await batchPayChargesAction(
+                    cardId,
+                    request.amount,
+                    request.requestId,
+                    request.asOfDate,
+                ).catch(() => null)
+                if (!result || !('data' in result) || !result.data) {
+                    if (result) {
+                        clearBatchPaymentRequest(
+                            userId,
+                            cardId,
+                            request.requestId,
+                        )
+                    }
+                    toast.error('No se pudo aplicar el pago.')
+                    return null
+                }
+                clearBatchPaymentRequest(
+                    userId,
+                    cardId,
+                    request.requestId,
+                )
+                const outcome = {
+                    appliedAmount: result.appliedAmount,
+                    unappliedAmount: result.unappliedAmount,
+                }
+                if (recoveredPreviousRequest) {
+                    toast.info(
+                        'Se recuperó primero el pago anterior cuya respuesta estaba pendiente. Revisa el saldo antes de registrar otro.',
+                    )
+                }
+                if (!isActiveCard(get(), userId, cardId)) {
+                    syncAfterMutation(userId, cardId)
+                    return outcome
+                }
 
-        const updated = new Map(result.data.map((charge) => [charge.id, charge]))
-        const charges = get().charges.map(
-            (charge) => updated.get(charge.id) ?? charge,
+                const updated = new Map(
+                    result.data.map((charge) => [charge.id, charge]),
+                )
+                const charges = get().charges.map(
+                    (charge) => updated.get(charge.id) ?? charge,
+                )
+                set({ charges })
+                await persistActiveCache(get())
+                syncAfterMutation(userId, cardId)
+                return outcome
+            },
         )
-        set({ charges })
-        await persistActiveCache(get())
-        syncAfterMutation(userId, cardId)
     },
 
     createCategory: async (name, monthlyBudget) => {

@@ -18,6 +18,12 @@ import { useCreateDialogState } from '@/stores/charges.store'
 import { useShallow } from 'zustand/shallow'
 import { useInfo } from '@/stores/info.store'
 import { CurrencyInput } from './currency-input'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+    isDateOnly,
+    MAX_INSTALLMENT_COUNT,
+    MIN_INSTALLMENT_COUNT,
+} from '@/lib/installments'
 
 export function CreateChargeDialog() {
     const { open, toggle } = useCreateDialogState(
@@ -31,13 +37,24 @@ export function CreateChargeDialog() {
     const [name, setName] = useState('')
     const [amountCents, setAmountCents] = useState(0)
     const [categoryName, setCategoryName] = useState('')
-    const [errors, setErrors] = useState<{ name?: string; amount?: string }>({})
+    const [installmentsEnabled, setInstallmentsEnabled] = useState(false)
+    const [installmentCount, setInstallmentCount] = useState(2)
+    const [firstInstallmentDate, setFirstInstallmentDate] = useState('')
+    const [errors, setErrors] = useState<{
+        name?: string
+        amount?: string
+        installmentCount?: string
+        firstInstallmentDate?: string
+    }>({})
     const [saving, setSaving] = useState(false)
 
     function resetForm() {
         setName('')
         setAmountCents(0)
         setCategoryName('')
+        setInstallmentsEnabled(false)
+        setInstallmentCount(2)
+        setFirstInstallmentDate('')
         setErrors({})
     }
 
@@ -54,6 +71,30 @@ export function CreateChargeDialog() {
         const newErrors: typeof errors = {}
         if (!trimmedName) newErrors.name = 'Name is required'
         if (amountCents <= 0) newErrors.amount = 'Invalid amount'
+        if (
+            installmentsEnabled &&
+            (!Number.isInteger(installmentCount) ||
+                installmentCount < MIN_INSTALLMENT_COUNT ||
+                installmentCount > MAX_INSTALLMENT_COUNT)
+        ) {
+            newErrors.installmentCount =
+                `Elige entre ${MIN_INSTALLMENT_COUNT} y ${MAX_INSTALLMENT_COUNT} meses`
+        }
+        if (
+            installmentsEnabled &&
+            !isDateOnly(firstInstallmentDate)
+        ) {
+            newErrors.firstInstallmentDate =
+                'La fecha de la primera mensualidad es requerida'
+        }
+        if (
+            installmentsEnabled &&
+            amountCents > 0 &&
+            amountCents < installmentCount
+        ) {
+            newErrors.amount =
+                'El monto debe permitir al menos un centavo por mensualidad'
+        }
         setErrors(newErrors)
         if (Object.keys(newErrors).length > 0) return
 
@@ -63,6 +104,12 @@ export function CreateChargeDialog() {
                 amountCents,
                 trimmedName,
                 categoryName,
+                installmentsEnabled
+                    ? {
+                          count: installmentCount,
+                          firstInstallmentDate,
+                      }
+                    : undefined,
             )
             if (saved) handleOpenChange(false)
         } finally {
@@ -72,7 +119,7 @@ export function CreateChargeDialog() {
 
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
-            <DialogContent className='sm:max-w-sm'>
+            <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-sm'>
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle>New Charge</DialogTitle>
@@ -130,6 +177,67 @@ export function CreateChargeDialog() {
                                 ))}
                             </datalist>
                         </Field>
+                        <Field>
+                            <div className='flex items-center gap-2'>
+                                <Checkbox
+                                    id='installments-1'
+                                    checked={installmentsEnabled}
+                                    onCheckedChange={(checked) =>
+                                        setInstallmentsEnabled(checked === true)
+                                    }
+                                />
+                                <Label htmlFor='installments-1'>A meses</Label>
+                            </div>
+                        </Field>
+                        {installmentsEnabled ? (
+                            <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                                <Field>
+                                    <Label htmlFor='installment-count-1'>
+                                        Meses
+                                    </Label>
+                                    <Input
+                                        id='installment-count-1'
+                                        name='installment-count'
+                                        type='number'
+                                        min={MIN_INSTALLMENT_COUNT}
+                                        max={MAX_INSTALLMENT_COUNT}
+                                        step={1}
+                                        value={installmentCount}
+                                        onChange={(event) =>
+                                            setInstallmentCount(
+                                                Number(event.target.value),
+                                            )
+                                        }
+                                    />
+                                    {errors.installmentCount && (
+                                        <FieldError>
+                                            {errors.installmentCount}
+                                        </FieldError>
+                                    )}
+                                </Field>
+                                <Field>
+                                    <Label htmlFor='first-installment-date-1'>
+                                        Primera mensualidad
+                                    </Label>
+                                    <Input
+                                        id='first-installment-date-1'
+                                        name='first-installment-date'
+                                        type='date'
+                                        value={firstInstallmentDate}
+                                        onChange={(event) =>
+                                            setFirstInstallmentDate(
+                                                event.target.value,
+                                            )
+                                        }
+                                    />
+                                    {errors.firstInstallmentDate && (
+                                        <FieldError>
+                                            {errors.firstInstallmentDate}
+                                        </FieldError>
+                                    )}
+                                </Field>
+                            </div>
+                        ) : null}
                     </FieldGroup>
                     <DialogFooter>
                         <DialogClose

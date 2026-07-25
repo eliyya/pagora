@@ -40,7 +40,7 @@ import {
     ChevronsRightIcon,
 } from 'lucide-react'
 import { flexRender } from '@tanstack/react-table'
-import { useId, useMemo } from 'react'
+import { useId } from 'react'
 import { DraggableRow } from './draggable-row'
 import { useTableContext } from './table-context'
 
@@ -52,11 +52,9 @@ export function ChargesDataTable() {
         useSensor(TouchSensor, {}),
         useSensor(KeyboardSensor, {}),
     )
-    const data = table.options.data
-    const dataIds = useMemo<UniqueIdentifier[]>(
-        () => data?.map(({ id }) => id) || [],
-        [data],
-    )
+    const dataIds: UniqueIdentifier[] = table
+        .getRowModel()
+        .rows.map((row) => row.original.id)
 
     return (
         <div className='relative flex flex-col gap-4 overflow-auto px-4 lg:px-6'>
@@ -141,7 +139,7 @@ export function ChargesDataTable() {
                             htmlFor='rows-per-page'
                             className='text-sm font-medium'
                         >
-                            Rows per page
+                            Charges or plans per page
                         </Label>
                         <Select
                             value={`${table.getState().pagination.pageSize}`}

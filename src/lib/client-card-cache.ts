@@ -9,6 +9,7 @@ import type {
     SerializedCharge,
     SerializedChargeCategory,
 } from '@/lib/card-sync.types'
+import { isDateOnly } from '@/lib/installments'
 import type { Card, User } from '@/db/generated/prisma/browser'
 
 const DATABASE_NAME = 'pagora-client'
@@ -130,10 +131,36 @@ export function isStoredCardCache(value: unknown): value is StoredCardCache {
         cache.charges.every((value) => {
             if (!value || typeof value !== 'object') return false
             const charge = value as Partial<SerializedCharge>
+            const kind = charge.kind ?? 'single'
+            const validKind =
+                kind === 'single' ||
+                kind === 'installment_parent' ||
+                kind === 'installment'
+            const validInstallmentMetadata =
+                charge.kind === undefined ||
+                (kind === 'single'
+                    ? charge.installment_parent_id === null &&
+                      charge.installment_number === null &&
+                      charge.installment_count === null
+                    : kind === 'installment_parent'
+                      ? charge.installment_parent_id === null &&
+                        charge.installment_number === null &&
+                        Number.isSafeInteger(charge.installment_count) &&
+                        charge.installment_count! >= 2
+                      : typeof charge.installment_parent_id === 'string' &&
+                        Number.isSafeInteger(charge.installment_number) &&
+                        charge.installment_number! >= 1 &&
+                        Number.isSafeInteger(charge.installment_count) &&
+                        charge.installment_count! >=
+                            charge.installment_number!)
             return (
                 typeof charge.id === 'string' &&
                 charge.card_id === cache.cardId &&
                 typeof charge.name === 'string' &&
+                validKind &&
+                validInstallmentMetadata &&
+                (charge.scheduled_for === undefined ||
+                    isDateOnly(charge.scheduled_for)) &&
                 (charge.category_id === null ||
                     typeof charge.category_id === 'string') &&
                 typeof charge.amount === 'number' &&
@@ -328,9 +355,25 @@ function isStoredOfflineSession(value: unknown): value is StoredOfflineSession {
 }
 
 function mutationChargeId(mutation: ClientMutation) {
-    return mutation.type === 'charge.create'
-        ? mutation.charge.id
-        : mutation.chargeId
+    if (mutation.type === 'charge.create') return mutation.charge.id
+    if (
+        mutation.type === 'installment.create' ||
+        mutation.type === 'installment.update'
+    ) {
+        return mutation.plan.id
+    }
+    if (mutation.type === 'installment.delete') return mutation.parentId
+    return mutation.chargeId
+}
+
+function mutationChargeIds(mutation: ClientMutation) {
+    if (
+        mutation.type === 'installment.create' ||
+        mutation.type === 'installment.update'
+    ) {
+        return [mutation.plan.id, ...mutation.plan.installmentIds]
+    }
+    return [mutationChargeId(mutation)]
 }
 
 function isOutboxRecordForCard(
@@ -616,7 +659,7 @@ export async function findLatestPendingMutationForCharge(
 ) {
     const records = await listPendingCardMutations(userId, cardId)
     for (let index = records.length - 1; index >= 0; index -= 1) {
-        if (mutationChargeId(records[index].mutation) === chargeId) {
+        if (mutationChargeIds(records[index].mutation).includes(chargeId)) {
             return records[index]
         }
     }
