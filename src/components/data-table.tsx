@@ -42,6 +42,11 @@ import { DashboardTabs } from './dashboard-tabs'
 import { TableProvider } from './table-context'
 import type { ChargeWithCategory } from '@/stores/info.store'
 
+export type BillingPeriodOption = {
+    value: string
+    label: string
+}
+
 export const schema = z.object({
     id: z.number(),
     header: z.string(),
@@ -413,6 +418,60 @@ const columns: ColumnDef<ChargeWithCategory>[] = [
         cell: ({ row }) => <ChargeActions charge={row.original} />,
     },
 ]
+
+function daysInUtcMonth(year: number, monthIndex: number) {
+    return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
+}
+
+function billingStartForMonth(year: number, monthIndex: number, closingDay: number) {
+    return new Date(
+        Date.UTC(
+            year,
+            monthIndex,
+            Math.min(closingDay, daysInUtcMonth(year, monthIndex)),
+        ),
+    )
+}
+
+function dateKey(date: Date) {
+    return date.toISOString().slice(0, 10)
+}
+
+function getBillingPeriodStart(date: Date, closingDay: number) {
+    const year = date.getUTCFullYear()
+    const month = date.getUTCMonth()
+    const currentStart = billingStartForMonth(year, month, closingDay)
+
+    if (date.getTime() >= currentStart.getTime()) {
+        return currentStart
+    }
+
+    return billingStartForMonth(year, month - 1, closingDay)
+}
+
+function getNextBillingPeriodStart(periodStart: Date, closingDay: number) {
+    return billingStartForMonth(
+        periodStart.getUTCFullYear(),
+        periodStart.getUTCMonth() + 1,
+        closingDay,
+    )
+}
+
+function formatBillingPeriodLabel(periodKey: string, closingDay: number) {
+    const start = new Date(`${periodKey}T00:00:00.000Z`)
+    const end = new Date(getNextBillingPeriodStart(start, closingDay))
+    end.setUTCDate(end.getUTCDate() - 1)
+
+    const formatter = new Intl.DateTimeFormat('es-MX', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC',
+    })
+
+    return `${formatter.format(start)} - ${formatter.format(end)}`
+}
+
 export function ChargesTable({
     cardId,
     userId,
@@ -421,19 +480,67 @@ export function ChargesTable({
     userId: string
 }) {
     const openCreateDialog = useCreateDialogState((s) => s.toggle)
-    const { data, fetch, syncCard } = useInfo(
+    const { data, card, fetch, syncCard } = useInfo(
         useShallow((s) => ({
             data:
                 s.activeCardId === cardId && s.activeUserId === userId
                     ? s.charges
                     : [],
+            card:
+                s.activeCardId === cardId && s.activeUserId === userId
+                    ? s.card
+                    : null,
             fetch: s.fetch,
             syncCard: s.syncCard,
         })),
     )
+    const closingDay = card?.closing_day ?? 1
+    const currentBillingPeriod = dateKey(
+        getBillingPeriodStart(new Date(), closingDay),
+    )
+    const [periodMode, setPeriodMode] = useState<'month' | 'all'>('month')
+    const [selectedPeriod, setSelectedPeriod] = useState(currentBillingPeriod)
+    const billingPeriods = useMemo<BillingPeriodOption[]>(() => {
+        const periodKeys = new Set([currentBillingPeriod])
+        for (const charge of data) {
+            periodKeys.add(
+                dateKey(getBillingPeriodStart(charge.scheduled_for, closingDay)),
+            )
+        }
+
+        return Array.from(periodKeys)
+            .sort((left, right) => right.localeCompare(left))
+            .map((periodKey) => ({
+                value: periodKey,
+                label: formatBillingPeriodLabel(periodKey, closingDay),
+            }))
+    }, [closingDay, currentBillingPeriod, data])
+    const filteredData = useMemo(() => {
+        if (periodMode === 'all') return data
+
+        const visibleIds = new Set<string>()
+        const visibleParentIds = new Set<string>()
+
+        for (const charge of data) {
+            const periodKey = dateKey(
+                getBillingPeriodStart(charge.scheduled_for, closingDay),
+            )
+            if (periodKey !== selectedPeriod) continue
+
+            visibleIds.add(charge.id)
+            if (charge.installment_parent_id) {
+                visibleParentIds.add(charge.installment_parent_id)
+            }
+        }
+
+        return data.filter(
+            (charge) =>
+                visibleIds.has(charge.id) || visibleParentIds.has(charge.id),
+        )
+    }, [closingDay, data, periodMode, selectedPeriod])
     const { groupedData, installmentsByParent } = useMemo(() => {
         const installmentsByParent = new Map<string, ChargeWithCategory[]>()
-        for (const charge of data) {
+        for (const charge of filteredData) {
             if (
                 charge.kind !== 'installment' ||
                 !charge.installment_parent_id
@@ -451,7 +558,7 @@ export function ChargesTable({
 
         const grouped: ChargeWithCategory[] = []
         const includedInstallments = new Set<string>()
-        for (const charge of data) {
+        for (const charge of filteredData) {
             if (charge.kind === 'installment') continue
             grouped.push(charge)
 
@@ -469,7 +576,7 @@ export function ChargesTable({
             }
         }
 
-        for (const charge of data) {
+        for (const charge of filteredData) {
             if (
                 charge.kind === 'installment' &&
                 !includedInstallments.has(charge.id)
@@ -478,7 +585,7 @@ export function ChargesTable({
             }
         }
         return { groupedData: grouped, installmentsByParent }
-    }, [data])
+    }, [filteredData])
     const rowCount = groupedData.length
     const [rowSelection, setRowSelection] = useState({})
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
@@ -493,6 +600,13 @@ export function ChargesTable({
     useEffect(() => {
         void fetch(cardId, userId)
     }, [cardId, fetch, userId])
+    useEffect(() => {
+        setSelectedPeriod(currentBillingPeriod)
+    }, [cardId, currentBillingPeriod])
+    useEffect(() => {
+        setPagination((current) => ({ ...current, pageIndex: 0 }))
+        setRowSelection({})
+    }, [periodMode, selectedPeriod])
     useEffect(() => {
         let checking = false
 
@@ -574,7 +688,14 @@ export function ChargesTable({
     })
     return (
         <TableProvider table={table}>
-            <DashboardTabs openCreateDialog={openCreateDialog} />
+            <DashboardTabs
+                openCreateDialog={openCreateDialog}
+                periodMode={periodMode}
+                selectedPeriod={selectedPeriod}
+                billingPeriods={billingPeriods}
+                onPeriodModeChange={setPeriodMode}
+                onSelectedPeriodChange={setSelectedPeriod}
+            />
             <CreateChargeDialog />
             <EditChargeDialog />
             <DeleteChargeDialog />
