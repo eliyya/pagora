@@ -40,11 +40,22 @@ import { useInfo } from '@/stores/info.store'
 import { ShareCardDialog } from './share-card-dialog'
 import { BudgetCategoriesPanel } from './budget-categories-panel'
 import { CardSyncStatus } from './card-sync-status'
+import type { BillingPeriodOption } from './data-table'
 
 export function DashboardTabs({
     openCreateDialog,
+    periodMode,
+    selectedPeriod,
+    billingPeriods,
+    onPeriodModeChange,
+    onSelectedPeriodChange,
 }: {
     openCreateDialog: (open: boolean) => void
+    periodMode: 'month' | 'all'
+    selectedPeriod: string
+    billingPeriods: BillingPeriodOption[]
+    onPeriodModeChange: (mode: 'month' | 'all') => void
+    onSelectedPeriodChange: (period: string) => void
 }) {
     const table = useTableContext()
     const [payOpen, setPayOpen] = useState(false)
@@ -78,7 +89,7 @@ export function DashboardTabs({
                 }}
                 className='w-full flex-col justify-start gap-6'
             >
-                <div className='flex items-center justify-between px-4 lg:px-6'>
+                <div className='flex flex-wrap items-center justify-between gap-2 px-4 lg:px-6'>
                     <Label htmlFor='view-selector' className='sr-only'>
                         View
                     </Label>
@@ -132,6 +143,46 @@ export function DashboardTabs({
                         }
                         className='max-w-sm'
                     />
+                    <Label htmlFor='period-selector' className='sr-only'>
+                        Billing period
+                    </Label>
+                    <Select
+                        value={periodMode === 'all' ? 'all' : selectedPeriod}
+                        onValueChange={(value) => {
+                            if (!value) return
+                            if (value === 'all') {
+                                onPeriodModeChange('all')
+                                return
+                            }
+                            onSelectedPeriodChange(value)
+                            onPeriodModeChange('month')
+                        }}
+                        items={[
+                            { label: 'Corrido', value: 'all' },
+                            ...billingPeriods,
+                        ]}
+                    >
+                        <SelectTrigger
+                            className='min-w-48'
+                            size='sm'
+                            id='period-selector'
+                        >
+                            <SelectValue placeholder='Periodo' />
+                        </SelectTrigger>
+                        <SelectContent align='end'>
+                            <SelectGroup>
+                                <SelectItem value='all'>Corrido</SelectItem>
+                                {billingPeriods.map((period) => (
+                                    <SelectItem
+                                        key={period.value}
+                                        value={period.value}
+                                    >
+                                        {period.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectGroup>
+                        </SelectContent>
+                    </Select>
                     <TabsList className='hidden **:data-[slot=badge]:size-5 **:data-[slot=badge]:rounded-full **:data-[slot=badge]:bg-muted-foreground/30 **:data-[slot=badge]:px-1 @4xl/main:flex'>
                         <TabsTrigger value='charges'>Charges</TabsTrigger>
                         <TabsTrigger value='budgets'>Budgets</TabsTrigger>
