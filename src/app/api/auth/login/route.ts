@@ -19,6 +19,55 @@ interface DiscordAccessTokenResponse {
     refresh_token: string
     scope: string
 }
+
+interface DiscordOAuthErrorResponse {
+    error?: string
+    error_description?: string
+}
+
+function redirectToLoginWithOAuthError(req: NextRequest) {
+    const url = new URL('/auth/login', req.url)
+    url.searchParams.set('error', 'discord_oauth')
+    return NextResponse.redirect(url)
+}
+
+function isDiscordAccessTokenResponse(
+    payload: unknown,
+): payload is DiscordAccessTokenResponse {
+    return (
+        typeof payload === 'object' &&
+        payload !== null &&
+        'access_token' in payload &&
+        typeof payload.access_token === 'string' &&
+        'refresh_token' in payload &&
+        typeof payload.refresh_token === 'string'
+    )
+}
+
+type DiscordLoginResult =
+    | { success: true; jwt: string; refreshToken: string }
+    | {
+          success: false
+          status: number
+          error: string
+          description?: string
+      }
+
+const inFlightDiscordLogins = new Map<string, Promise<DiscordLoginResult>>()
+
+function loginWithDiscordCode(code: string) {
+    const existing = inFlightDiscordLogins.get(code)
+    if (existing) return existing
+
+    const login = completeDiscordLogin(code)
+    inFlightDiscordLogins.set(code, login)
+    void login.then(
+        () => setTimeout(() => inFlightDiscordLogins.delete(code), 60_000),
+        () => inFlightDiscordLogins.delete(code),
+    )
+    return login
+}
+
 export async function GET(req: NextRequest) {
     const code = req.nextUrl.searchParams.get('code')
 
@@ -41,6 +90,38 @@ export async function GET(req: NextRequest) {
         url.searchParams.append('scope', 'identify+email+openid')
         return NextResponse.redirect(url)
     }
+    const login = await loginWithDiscordCode(code)
+    if (!login.success) {
+        console.error('Discord OAuth token exchange failed', {
+            status: login.status,
+            error: login.error,
+            description: login.description,
+        })
+        return redirectToLoginWithOAuthError(req)
+    }
+
+    const res = NextResponse.redirect(new URL('/dashboard', req.url))
+
+    res.cookies.set(COOKIES.SESSION, login.jwt, {
+        httpOnly: true,
+        secure: NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 60 * 60,
+    })
+
+    res.cookies.set(COOKIES.REFRESH, login.refreshToken, {
+        httpOnly: true,
+        secure: NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 60 * 60 * 24 * 7,
+    })
+
+    return res
+}
+
+async function completeDiscordLogin(code: string): Promise<DiscordLoginResult> {
     const params = new URLSearchParams({
         client_id: DISCORD_APLICATION_ID,
         client_secret: DISCORD_CLIENT_SECRET,
@@ -55,9 +136,25 @@ export async function GET(req: NextRequest) {
         },
         body: params,
     })
-    const discordAccess = (await request.json()) as DiscordAccessTokenResponse
+    const discordAccess = (await request.json().catch(() => null)) as unknown
+    if (!request.ok || !isDiscordAccessTokenResponse(discordAccess)) {
+        const error = discordAccess as DiscordOAuthErrorResponse | null
+        return {
+            success: false,
+            status: request.status,
+            error: error?.error ?? 'invalid_response',
+            description: error?.error_description,
+        }
+    }
 
     const discord = await getDiscordData(discordAccess.access_token)
+    if (!discord) {
+        return {
+            success: false,
+            status: 502,
+            error: 'user_lookup_failed',
+        }
+    }
 
     const user = await getOrCreateAccount({
         email: discord.email,
@@ -66,45 +163,21 @@ export async function GET(req: NextRequest) {
         refresh_token: discordAccess.refresh_token,
         provider_acccount_id: discord.id,
     })
-
-    const expires_at = new Date(
-        Temporal.Now.instant().add({
-            hours: 24 * 7,
-        }).epochMilliseconds,
-    )
-    const refresh_token = generateRefreshToken()
+    const refreshToken = generateRefreshToken()
     const session = await db.session.create({
         data: {
-            expires_at,
-            refresh_token: weakHash(refresh_token),
+            expires_at: new Date(
+                Temporal.Now.instant().add({ hours: 24 * 7 }).epochMilliseconds,
+            ),
+            refresh_token: weakHash(refreshToken),
             user_id: user.id,
         },
     })
-
     const jwt = await createJWT({
         sub: user.id,
         session_id: session.id,
     })
-
-    const res = NextResponse.redirect(new URL('/dashboard', req.url))
-
-    res.cookies.set(COOKIES.SESSION, jwt, {
-        httpOnly: true,
-        secure: NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 60 * 60,
-    })
-
-    res.cookies.set(COOKIES.REFRESH, refresh_token, {
-        httpOnly: true,
-        secure: NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 60 * 60 * 24 * 7,
-    })
-
-    return res
+    return { success: true, jwt, refreshToken }
 }
 
 interface CreateAccountProps {
@@ -185,7 +258,13 @@ async function getDiscordData(token: string) {
             Authorization: `Bearer ${token}`,
         },
     })
-    const discordUser = (await request.json()) as DiscordDataResponse
+    const discordUser = (await request.json().catch(() => null)) as unknown
+    if (!request.ok || !isDiscordDataResponse(discordUser)) {
+        console.error('Discord user lookup failed', {
+            status: request.status,
+        })
+        return null
+    }
     return discordUser
 }
 
@@ -210,4 +289,17 @@ interface DiscordDataResponse {
     premium_type: number
     email: string
     verified: boolean
+}
+
+function isDiscordDataResponse(payload: unknown): payload is DiscordDataResponse {
+    return (
+        typeof payload === 'object' &&
+        payload !== null &&
+        'id' in payload &&
+        typeof payload.id === 'string' &&
+        'email' in payload &&
+        typeof payload.email === 'string' &&
+        'username' in payload &&
+        typeof payload.username === 'string'
+    )
 }

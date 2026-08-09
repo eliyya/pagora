@@ -67,9 +67,14 @@ const serwist = new Serwist({
     cacheId: 'pagora',
     precacheEntries: self.__SW_MANIFEST,
     precacheOptions: { cleanupOutdatedCaches: true },
-    skipWaiting: false,
+    // Activate the OAuth callback fix as soon as the browser downloads it;
+    // otherwise an already-open Pagora tab keeps the previous worker alive.
+    skipWaiting: true,
     clientsClaim: true,
-    navigationPreload: true,
+    // OAuth authorization codes can be consumed only once. Navigation preload
+    // issues a second request for callback navigations before the worker handles
+    // them, causing Discord to reject the duplicate callback as invalid_grant.
+    navigationPreload: false,
     disableDevLogs: true,
     runtimeCaching,
     fallbacks: {
