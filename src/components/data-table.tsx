@@ -472,6 +472,32 @@ function formatBillingPeriodLabel(periodKey: string, closingDay: number) {
     return `${formatter.format(start)} - ${formatter.format(end)}`
 }
 
+function getContinuousBillingPeriodKeys(
+    periodKeys: Set<string>,
+    closingDay: number,
+) {
+    const sortedKeys = Array.from(periodKeys).sort()
+    const firstKey = sortedKeys[0]
+    const lastKey = sortedKeys.at(-1)
+
+    if (!firstKey || !lastKey) return []
+
+    const keys: string[] = []
+    let periodStart = new Date(`${firstKey}T00:00:00.000Z`)
+    const lastStart = new Date(`${lastKey}T00:00:00.000Z`)
+
+    while (periodStart.getTime() <= lastStart.getTime()) {
+        keys.push(dateKey(periodStart))
+
+        const nextStart = getNextBillingPeriodStart(periodStart, closingDay)
+        if (nextStart.getTime() <= periodStart.getTime()) break
+
+        periodStart = nextStart
+    }
+
+    return keys
+}
+
 export function ChargesTable({
     cardId,
     userId,
@@ -508,7 +534,7 @@ export function ChargesTable({
             )
         }
 
-        return Array.from(periodKeys)
+        return getContinuousBillingPeriodKeys(periodKeys, closingDay)
             .sort((left, right) => right.localeCompare(left))
             .map((periodKey) => ({
                 value: periodKey,
