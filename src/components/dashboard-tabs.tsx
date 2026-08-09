@@ -40,7 +40,7 @@ import { useInfo } from '@/stores/info.store'
 import { ShareCardDialog } from './share-card-dialog'
 import { BudgetCategoriesPanel } from './budget-categories-panel'
 import { CardSyncStatus } from './card-sync-status'
-import type { BillingPeriodOption } from './data-table'
+import type { BillingPeriodMode, BillingPeriodOption } from './data-table'
 
 export function DashboardTabs({
     openCreateDialog,
@@ -51,10 +51,10 @@ export function DashboardTabs({
     onSelectedPeriodChange,
 }: {
     openCreateDialog: (open: boolean) => void
-    periodMode: 'month' | 'all'
+    periodMode: BillingPeriodMode
     selectedPeriod: string
     billingPeriods: BillingPeriodOption[]
-    onPeriodModeChange: (mode: 'month' | 'all') => void
+    onPeriodModeChange: (mode: BillingPeriodMode) => void
     onSelectedPeriodChange: (period: string) => void
 }) {
     const table = useTableContext()
@@ -147,11 +147,17 @@ export function DashboardTabs({
                         Billing period
                     </Label>
                     <Select
-                        value={periodMode === 'all' ? 'all' : selectedPeriod}
+                        value={
+                            periodMode === 'month' ? selectedPeriod : periodMode
+                        }
                         onValueChange={(value) => {
                             if (!value) return
                             if (value === 'all') {
                                 onPeriodModeChange('all')
+                                return
+                            }
+                            if (value === 'unpaid') {
+                                onPeriodModeChange('unpaid')
                                 return
                             }
                             onSelectedPeriodChange(value)
@@ -159,6 +165,7 @@ export function DashboardTabs({
                         }}
                         items={[
                             { label: 'Corrido', value: 'all' },
+                            { label: 'Sin liquidar', value: 'unpaid' },
                             ...billingPeriods,
                         ]}
                     >
@@ -172,6 +179,9 @@ export function DashboardTabs({
                         <SelectContent align='end'>
                             <SelectGroup>
                                 <SelectItem value='all'>Corrido</SelectItem>
+                                <SelectItem value='unpaid'>
+                                    Sin liquidar
+                                </SelectItem>
                                 {billingPeriods.map((period) => (
                                     <SelectItem
                                         key={period.value}
