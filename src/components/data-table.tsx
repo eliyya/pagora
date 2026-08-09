@@ -47,6 +47,8 @@ export type BillingPeriodOption = {
     label: string
 }
 
+export type BillingPeriodMode = 'month' | 'all' | 'unpaid'
+
 export const schema = z.object({
     id: z.number(),
     header: z.string(),
@@ -498,6 +500,10 @@ function getContinuousBillingPeriodKeys(
     return keys
 }
 
+function isUnpaidCharge(charge: ChargeWithCategory) {
+    return charge.paid < charge.amount
+}
+
 export function ChargesTable({
     cardId,
     userId,
@@ -524,7 +530,7 @@ export function ChargesTable({
     const currentBillingPeriod = dateKey(
         getBillingPeriodStart(new Date(), closingDay),
     )
-    const [periodMode, setPeriodMode] = useState<'month' | 'all'>('month')
+    const [periodMode, setPeriodMode] = useState<BillingPeriodMode>('month')
     const [selectedPeriod, setSelectedPeriod] = useState(currentBillingPeriod)
     const billingPeriods = useMemo<BillingPeriodOption[]>(() => {
         const periodKeys = new Set([currentBillingPeriod])
@@ -548,10 +554,14 @@ export function ChargesTable({
         const visibleParentIds = new Set<string>()
 
         for (const charge of data) {
-            const periodKey = dateKey(
-                getBillingPeriodStart(charge.scheduled_for, closingDay),
-            )
-            if (periodKey !== selectedPeriod) continue
+            if (periodMode === 'unpaid') {
+                if (!isUnpaidCharge(charge)) continue
+            } else {
+                const periodKey = dateKey(
+                    getBillingPeriodStart(charge.scheduled_for, closingDay),
+                )
+                if (periodKey !== selectedPeriod) continue
+            }
 
             visibleIds.add(charge.id)
             if (charge.installment_parent_id) {
