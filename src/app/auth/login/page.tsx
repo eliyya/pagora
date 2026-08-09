@@ -3,7 +3,14 @@ import { ArrowRight, Clock3, ShieldCheck, Sparkles } from 'lucide-react'
 import Image from 'next/image'
 import { SiDiscord } from 'react-icons/si'
 
-export default function page() {
+interface LoginPageProps {
+    searchParams: Promise<{ error?: string | string[] }>
+}
+
+export default async function page({ searchParams }: LoginPageProps) {
+    const { error } = await searchParams
+    const hasOAuthError = error === 'discord_oauth'
+
     return (
         <main className='relative min-h-screen overflow-hidden bg-linear-to-b from-background via-accent/10 to-secondary/10 px-4 py-10 md:px-8'>
             <div className='pointer-events-none absolute inset-0'>
@@ -78,6 +85,16 @@ export default function page() {
                                     Usa tu cuenta de Discord para entrar a tu
                                     panel.
                                 </p>
+
+                                {hasOAuthError && (
+                                    <p
+                                        className='mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive'
+                                        role='alert'
+                                    >
+                                        No pudimos completar el acceso con
+                                        Discord. Intenta de nuevo.
+                                    </p>
+                                )}
 
                                 <a
                                     href='/api/auth/login'
