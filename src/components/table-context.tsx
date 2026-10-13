@@ -1,16 +1,18 @@
 'use client'
 
+import type { ChargeTableFeatures } from '@/lib/table-features'
+
 import { createContext, useContext, type ReactNode } from 'react'
-import type { Table } from '@tanstack/react-table'
+import type { ReactTable as Table } from '@tanstack/react-table'
 import type { ChargeWithCategory } from '@/stores/info.store'
 
-const TableContext = createContext<Table<ChargeWithCategory> | null>(null)
+const TableContext = createContext<Table<ChargeTableFeatures, ChargeWithCategory> | null>(null)
 
 export function TableProvider({
     table,
     children,
 }: {
-    table: Table<ChargeWithCategory>
+    table: Table<ChargeTableFeatures, ChargeWithCategory>
     children: ReactNode
 }) {
     return (

@@ -1,9 +1,8 @@
 'use server'
 
 import { cookies } from 'next/headers'
-import { jwtVerify } from 'jose'
+import { verifySessionJWT } from '@/lib/session-jwt'
 import { db } from '@/db/prisma'
-import { getPublicKey } from '@/lib/envs'
 import { COOKIES } from '@/lib/constants'
 
 export async function getCurrentUserAction() {
@@ -15,7 +14,7 @@ export async function getCurrentUserAction() {
             return null
         }
 
-        const { payload } = await jwtVerify(token, await getPublicKey())
+        const { payload } = await verifySessionJWT(token)
 
         if (!payload.sub) {
             return null

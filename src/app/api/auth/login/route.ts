@@ -1,14 +1,13 @@
+import { createDiscordPKCE, readDiscordVerifier, DISCORD_OAUTH_COOKIE, DISCORD_OAUTH_MAX_AGE } from '@/lib/discord-pkce'
 import { PROVIDERS } from '@/db/generated/prisma/enums'
 import { db } from '@/db/prisma'
 import { COOKIES, DISCORD_URL_REDIRECT } from '@/lib/constants'
 import { createJWT, encrypt, generateRefreshToken, weakHash } from '@/lib/crypt'
 import {
     DISCORD_APLICATION_ID,
-    DISCORD_CLIENT_SECRET,
-    getPublicKey,
     NODE_ENV,
 } from '@/lib/envs'
-import { jwtVerify } from 'jose'
+import { verifySessionJWT } from '@/lib/session-jwt'
 import { NextRequest, NextResponse } from 'next/server'
 import { Temporal } from 'temporal-polyfill'
 
@@ -28,7 +27,13 @@ interface DiscordOAuthErrorResponse {
 function redirectToLoginWithOAuthError(req: NextRequest) {
     const url = new URL('/auth/login', req.url)
     url.searchParams.set('error', 'discord_oauth')
-    return NextResponse.redirect(url)
+    return clearOAuthCookie(NextResponse.redirect(url))
+}
+
+function clearOAuthCookie(response: NextResponse) {
+    response.cookies.set(DISCORD_OAUTH_COOKIE, '', { httpOnly: true, secure: NODE_ENV === 'production', sameSite: 'lax', path: '/api/auth/login', maxAge: 0 })
+    response.headers.set('Cache-Control', 'no-store')
+    return response
 }
 
 function isDiscordAccessTokenResponse(
@@ -55,42 +60,62 @@ type DiscordLoginResult =
 
 const inFlightDiscordLogins = new Map<string, Promise<DiscordLoginResult>>()
 
-function loginWithDiscordCode(code: string) {
-    const existing = inFlightDiscordLogins.get(code)
+function loginWithDiscordCode(code: string, verifier: string) {
+    const key = weakHash(`${code}:${verifier}`)
+    const existing = inFlightDiscordLogins.get(key)
     if (existing) return existing
 
-    const login = completeDiscordLogin(code)
-    inFlightDiscordLogins.set(code, login)
+    const login = completeDiscordLogin(code, verifier)
+    inFlightDiscordLogins.set(key, login)
     void login.then(
-        () => setTimeout(() => inFlightDiscordLogins.delete(code), 60_000),
-        () => inFlightDiscordLogins.delete(code),
+        () => setTimeout(() => inFlightDiscordLogins.delete(key), 60_000),
+        () => inFlightDiscordLogins.delete(key),
     )
     return login
 }
 
 export async function GET(req: NextRequest) {
     const code = req.nextUrl.searchParams.get('code')
+    if (req.nextUrl.searchParams.has('error')) return redirectToLoginWithOAuthError(req)
 
     const prevsession = req.cookies.get(COOKIES.SESSION)?.value
     if (!code && prevsession) {
-        const jwtPayload = await jwtVerify(
-            prevsession,
-            await getPublicKey(),
-        ).catch(() => null)
+        const jwtPayload = await verifySessionJWT(prevsession).catch(() => null)
         if (jwtPayload) {
             return NextResponse.redirect(new URL('/dashboard', req.url))
         }
     }
 
     if (typeof code !== 'string') {
+        if (req.nextUrl.searchParams.has('state')) return redirectToLoginWithOAuthError(req)
+        const pkce = await createDiscordPKCE()
         const url = new URL('https://discord.com/oauth2/authorize')
         url.searchParams.append('client_id', DISCORD_APLICATION_ID)
         url.searchParams.append('response_type', 'code')
         url.searchParams.append('redirect_uri', DISCORD_URL_REDIRECT)
-        url.searchParams.append('scope', 'identify+email+openid')
-        return NextResponse.redirect(url)
+        url.searchParams.append('scope', 'identify email openid')
+        url.searchParams.set('state', pkce.state)
+        url.searchParams.set('code_challenge', pkce.challenge)
+        url.searchParams.set('code_challenge_method', 'S256')
+        const response = NextResponse.redirect(url)
+        response.headers.set('Cache-Control', 'no-store')
+        response.cookies.set(DISCORD_OAUTH_COOKIE, pkce.cookie, {
+            httpOnly: true, secure: NODE_ENV === 'production', sameSite: 'lax',
+            path: '/api/auth/login', maxAge: DISCORD_OAUTH_MAX_AGE,
+        })
+        return response
     }
-    const login = await loginWithDiscordCode(code)
+    const verifier = await readDiscordVerifier(
+        req.cookies.get(DISCORD_OAUTH_COOKIE)?.value,
+        req.nextUrl.searchParams.get('state'),
+    )
+    if (!code || !verifier) return redirectToLoginWithOAuthError(req)
+    let login: DiscordLoginResult
+    try {
+        login = await loginWithDiscordCode(code, verifier)
+    } catch {
+        return redirectToLoginWithOAuthError(req)
+    }
     if (!login.success) {
         console.error('Discord OAuth token exchange failed', {
             status: login.status,
@@ -118,13 +143,13 @@ export async function GET(req: NextRequest) {
         maxAge: 60 * 60 * 24 * 7,
     })
 
-    return res
+    return clearOAuthCookie(res)
 }
 
-async function completeDiscordLogin(code: string): Promise<DiscordLoginResult> {
+async function completeDiscordLogin(code: string, verifier: string): Promise<DiscordLoginResult> {
     const params = new URLSearchParams({
         client_id: DISCORD_APLICATION_ID,
-        client_secret: DISCORD_CLIENT_SECRET,
+        code_verifier: verifier,
         redirect_uri: DISCORD_URL_REDIRECT,
         grant_type: 'authorization_code',
         code,

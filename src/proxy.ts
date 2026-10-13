@@ -1,7 +1,7 @@
-import { jwtVerify } from 'jose'
+import { verifySessionJWT } from '@/lib/session-jwt'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { getPublicKey, NODE_ENV } from './lib/envs'
+import { NODE_ENV } from './lib/envs'
 import { COOKIES, REDIRECT_PATH } from './lib/constants'
 import { db } from './db/prisma'
 import { createJWT, generateRefreshToken, weakHash } from './lib/crypt'
@@ -17,7 +17,7 @@ export async function proxy(request: NextRequest) {
         }
         return await refreshToken(request, refresh)
     }
-    const jwtPayload = await jwtVerify(cookie, await getPublicKey()).catch(
+    const jwtPayload = await verifySessionJWT(cookie).catch(
         () => null,
     )
 

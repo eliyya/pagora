@@ -1,4 +1,5 @@
-import { type Table } from '@tanstack/react-table'
+import type { ChargeTableFeatures } from '@/lib/table-features'
+import { type ReactTable as Table, type RowData } from '@tanstack/react-table'
 import {
     ChevronLeft,
     ChevronRight,
@@ -17,11 +18,11 @@ import {
 import { useInfo } from '@/stores/info.store'
 import { useEffect } from 'react'
 
-interface DataTablePaginationProps<TData> {
-    table: Table<TData>
+interface DataTablePaginationProps<TData extends RowData> {
+    table: Table<ChargeTableFeatures, TData>
 }
 
-export function DataTablePagination<TData>({
+export function DataTablePagination<TData extends RowData>({
     table,
 }: DataTablePaginationProps<TData>) {
     const pageSize = useInfo((state) => state.pageSize)
@@ -71,7 +72,7 @@ export function DataTablePagination<TData>({
                         </Select>
                     </div>
                     <div className='flex w-20 items-center justify-center text-sm font-medium'>
-                        Page {table.getState().pagination.pageIndex + 1} of{' '}
+                        Page {table.state.pagination.pageIndex + 1} of{' '}
                         {table.getPageCount()}
                     </div>
                     <Button

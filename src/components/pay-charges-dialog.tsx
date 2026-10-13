@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
+import { CurrencyInput } from './currency-input'
 import { Label } from '@/components/ui/label'
 import { useInfo } from '@/stores/info.store'
 
@@ -25,22 +25,19 @@ export function PayChargesDialog({
 }) {
     const batchPayCharges = useInfo((s) => s.batchPayCharges)
     const formRef = useRef<HTMLFormElement>(null)
+    const [amountCents, setAmountCents] = useState(0)
     const [error, setError] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
 
     async function handleSubmit(e: FormEvent<HTMLFormElement>) {
         e.preventDefault()
         if (isSubmitting) return
-        const form = new FormData(e.currentTarget)
-        const rawAmount = form.get('amount') as string
-        const parsed = parseFloat(rawAmount)
-
-        if (isNaN(parsed) || parsed <= 0) {
+        const amount = amountCents
+        if (!Number.isSafeInteger(amount) || amount <= 0) {
             setError('Invalid amount')
             return
         }
 
-        const amount = Math.round(parsed * 100)
         setError('')
         setIsSubmitting(true)
         try {
@@ -57,11 +54,11 @@ export function PayChargesDialog({
                 setError(
                     `${money.format(outcome.appliedAmount / 100)} was applied. ${money.format(outcome.unappliedAmount / 100)} was not applied because there are no more due charges.`,
                 )
-                if (outcome.appliedAmount > 0) formRef.current?.reset()
+                if (outcome.appliedAmount > 0) setAmountCents(0)
                 return
             }
 
-            formRef.current?.reset()
+            setAmountCents(0)
             setError('')
             onOpenChange(false)
         } finally {
@@ -75,7 +72,7 @@ export function PayChargesDialog({
             onOpenChange={(value) => {
                 if (isSubmitting) return
                 if (!value) {
-                    formRef.current?.reset()
+                    setAmountCents(0)
                     setError('')
                 }
                 onOpenChange(value)
@@ -93,12 +90,11 @@ export function PayChargesDialog({
                     <FieldGroup>
                         <Field>
                             <Label htmlFor='pay-amount'>Amount</Label>
-                            <Input
+                            <CurrencyInput
                                 id='pay-amount'
                                 name='amount'
-                                type='number'
-                                step='0.01'
-                                min={0.01}
+                                valueCents={amountCents}
+                                onValueCentsChange={setAmountCents}
                                 required
                                 disabled={isSubmitting}
                             />

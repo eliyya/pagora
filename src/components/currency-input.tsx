@@ -4,7 +4,10 @@ import { ComponentProps } from 'react'
 import { Input } from '@/components/ui/input'
 
 export function formatCents(cents: number) {
-    return (Math.max(0, cents) / 100).toFixed(2)
+    return new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    }).format(Math.max(0, cents) / 100)
 }
 
 export function CurrencyInput({
@@ -23,7 +26,8 @@ export function CurrencyInput({
             value={formatCents(valueCents)}
             onChange={(event) => {
                 const digits = event.target.value.replace(/\D/g, '')
-                onValueCentsChange(digits ? Number(digits) : 0)
+                const cents = digits ? Number(digits) : 0
+                if (Number.isSafeInteger(cents)) onValueCentsChange(cents)
             }}
         />
     )

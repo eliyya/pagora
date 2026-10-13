@@ -173,9 +173,13 @@ export function ChartAreaInteractive() {
                             content={
                                 <ChartTooltipContent
                                     labelFormatter={(value) => {
-                                        return new Date(
-                                            value,
-                                        ).toLocaleDateString('en-US', {
+                                        if (
+                                            typeof value !== 'string' &&
+                                            typeof value !== 'number'
+                                        ) return null
+                                        const date = new Date(value)
+                                        if (Number.isNaN(date.getTime())) return null
+                                        return date.toLocaleDateString('en-US', {
                                             month: 'short',
                                             day: 'numeric',
                                             timeZone: 'UTC',

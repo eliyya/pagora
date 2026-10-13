@@ -1,17 +1,16 @@
 'use client'
 
+import { chargeTableFeatures, type ChargeTableFeatures } from '@/lib/table-features'
+
 import {
     ColumnDef,
+    type RowData,
     ColumnFiltersState,
     SortingState,
-    VisibilityState,
+    ColumnVisibilityState,
     flexRender,
-    getCoreRowModel,
-    getFilteredRowModel,
-    getPaginationRowModel,
-    getSortedRowModel,
     RowSelectionState,
-    useReactTable,
+    useTable,
 } from '@tanstack/react-table'
 
 import {
@@ -35,37 +34,33 @@ import { DataTablePagination } from '../data-table-pagination'
 import { PlusIcon } from 'lucide-react'
 import { useCreateDialogState } from '@/stores/charges.store'
 
-interface DataTableProps<TData, TValue> {
-    columns: ColumnDef<TData, TValue>[]
+interface DataTableProps<TData extends RowData> {
+    columns: ColumnDef<ChargeTableFeatures, TData>[]
     data: TData[]
     rowCount?: number
 }
 
-export function DataTable<TData, TValue>({
+export function DataTable<TData extends RowData>({
     columns,
     data,
     rowCount,
-}: DataTableProps<TData, TValue>) {
+}: DataTableProps<TData>) {
     const setOpen = useCreateDialogState((s) => s.toggle)
     const [sorting, onSortingChange] = useState<SortingState>([])
     const [columnFilters, onColumnFiltersChange] = useState<ColumnFiltersState>(
         [],
     )
     const [columnVisibility, onColumnVisibilityChange] =
-        useState<VisibilityState>({})
+        useState<ColumnVisibilityState>({})
     const [rowSelection, onRowSelectionChange] = useState<RowSelectionState>({})
 
-    // eslint-disable-next-line react-hooks/incompatible-library
-    const table = useReactTable({
+    const table = useTable({
+        features: chargeTableFeatures,
         data,
         columns,
-        getCoreRowModel: getCoreRowModel(),
-        getPaginationRowModel: getPaginationRowModel(),
         rowCount,
         onSortingChange,
-        getSortedRowModel: getSortedRowModel(),
         onColumnFiltersChange,
-        getFilteredRowModel: getFilteredRowModel(),
         onColumnVisibilityChange,
         onRowSelectionChange,
         state: {

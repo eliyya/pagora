@@ -1,5 +1,7 @@
 'use client'
 
+import type { ChargeTableFeatures } from '@/lib/table-features'
+
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { flexRender, type Row } from '@tanstack/react-table'
@@ -8,7 +10,7 @@ import type { ChargeWithCategory } from '@/stores/info.store'
 
 export function DraggableRow({
     row,
-}: Readonly<{ row: Row<ChargeWithCategory> }>) {
+}: Readonly<{ row: Row<ChargeTableFeatures, ChargeWithCategory> }>) {
     const { transform, transition, setNodeRef, isDragging } = useSortable({
         id: row.original.id,
     })
