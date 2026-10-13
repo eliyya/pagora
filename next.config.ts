@@ -16,6 +16,10 @@ const pwaBuildId =
     randomUUID()
 
 const nextConfig: NextConfig = {
+    deploymentId: process.env.NODE_ENV === 'development'
+        ? 'pagora-dev-payment-type-1'
+        : pwaBuildId,
+    allowedDevOrigins: ['dev.eliyya.dev'],
     env: {
         PWA_BUILD_ID: pwaBuildId,
     },
@@ -42,4 +46,6 @@ const nextConfig: NextConfig = {
     },
 }
 
-export default withSerwist(nextConfig)
+export default process.env.NODE_ENV === 'development'
+    ? nextConfig
+    : withSerwist(nextConfig)

@@ -1,3 +1,4 @@
+import { epochMilliseconds } from '@/lib/dates'
 import { getCurrentUserAction } from '@/actions/users.action'
 import { Prisma } from '@/db/generated/prisma/client'
 import { db } from '@/db/prisma'
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
             ? new Date(body.expires_at)
             : null
 
-    if (expiresAt && Number.isNaN(expiresAt.getTime())) {
+    if (expiresAt && Number.isNaN(epochMilliseconds(expiresAt))) {
         return Response.json(
             { error: 'expires_at must be a valid ISO date string' },
             { status: 400 },

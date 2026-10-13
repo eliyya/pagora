@@ -1,7 +1,8 @@
+import { epochMilliseconds } from '@/lib/dates'
 import { verifySessionJWT } from '@/lib/session-jwt'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { NODE_ENV } from './lib/envs'
+import { APP_URL, NODE_ENV } from './lib/envs'
 import { COOKIES, REDIRECT_PATH } from './lib/constants'
 import { db } from './db/prisma'
 import { createJWT, generateRefreshToken, weakHash } from './lib/crypt'
@@ -38,7 +39,7 @@ function authenticationFailure(request: NextRequest) {
     if (request.nextUrl.pathname.startsWith('/api/cards/')) {
         return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
     }
-    return NextResponse.redirect(new URL(REDIRECT_PATH, request.url))
+    return NextResponse.redirect(new URL(REDIRECT_PATH, APP_URL))
 }
 
 async function refreshToken(request: NextRequest, refresh: string) {
@@ -51,7 +52,7 @@ async function refreshToken(request: NextRequest, refresh: string) {
     if (!session) {
         return authenticationFailure(request)
     }
-    if (session.expires_at.getTime() < Date.now()) {
+    if (epochMilliseconds(session.expires_at) < Temporal.Now.instant().epochMilliseconds) {
         await db.session.deleteMany({
             where: { id: session.id },
         })

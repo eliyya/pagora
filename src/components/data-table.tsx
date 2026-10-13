@@ -1,5 +1,8 @@
 'use client'
 
+import { Temporal } from 'temporal-polyfill'
+import { plainDate, instant, getBillingPeriodStart, formatBillingPeriodLabel, getContinuousBillingPeriodKeys } from '@/lib/dates'
+
 import { chargeTableFeatures, type ChargeTableFeatures } from '@/lib/table-features'
 
 import {
@@ -146,7 +149,7 @@ const installmentSorting: SortFn<ChargeTableFeatures, ChargeWithCategory> = (
     const leftValue = leftRow.getValue<unknown>(columnId)
     const rightValue = rightRow.getValue<unknown>(columnId)
     if (leftValue instanceof Date && rightValue instanceof Date) {
-        return leftValue.getTime() - rightValue.getTime()
+        return Temporal.Instant.compare(instant(leftValue), instant(rightValue))
     }
     if (typeof leftValue === 'number' && typeof rightValue === 'number') {
         return leftValue - rightValue
@@ -317,15 +320,9 @@ const columns: ColumnDef<ChargeTableFeatures, ChargeWithCategory>[] = [
             <DataTableColumnHeader column={column} title='Date' />
         ),
         cell: ({ row }) => {
-            const rawDate = row.getValue('scheduled_for')
-            const date =
-                rawDate instanceof Date ? rawDate : new Date(String(rawDate))
-            const formatted = new Intl.DateTimeFormat('es-MX', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric',
-                timeZone: 'UTC',
-            }).format(date)
+            const formatted = plainDate(row.original.scheduled_for).toLocaleString('es-MX', {
+                day: '2-digit', month: 'short', year: 'numeric',
+            })
 
             return <div className='whitespace-nowrap'>{formatted}</div>
         },
@@ -398,92 +395,11 @@ const columns: ColumnDef<ChargeTableFeatures, ChargeWithCategory>[] = [
     },
 ]
 
-function daysInUtcMonth(year: number, monthIndex: number) {
-    return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
-}
-
-function billingStartForMonth(year: number, monthIndex: number, closingDay: number) {
-    return new Date(
-        Date.UTC(
-            year,
-            monthIndex,
-            Math.min(closingDay, daysInUtcMonth(year, monthIndex)) + 1,
-        ),
-    )
-}
-
-function dateKey(date: Date) {
-    return date.toISOString().slice(0, 10)
-}
-
-function getBillingPeriodStart(date: Date, closingDay: number) {
-    const year = date.getUTCFullYear()
-    const month = date.getUTCMonth()
-    const currentStart = billingStartForMonth(year, month, closingDay)
-
-    if (date.getTime() >= currentStart.getTime()) {
-        return currentStart
-    }
-
-    return billingStartForMonth(year, month - 1, closingDay)
-}
-
-function getNextBillingPeriodStart(periodStart: Date, closingDay: number) {
-    // The start can fall on the first of the next month for month-end cuts.
-    // Use the preceding closing date to determine the next closing month.
-    const closingDate = new Date(periodStart)
-    closingDate.setUTCDate(closingDate.getUTCDate() - 1)
-    return billingStartForMonth(
-        closingDate.getUTCFullYear(),
-        closingDate.getUTCMonth() + 1,
-        closingDay,
-    )
-}
-
-function formatBillingPeriodLabel(periodKey: string, closingDay: number) {
-    const start = new Date(`${periodKey}T00:00:00.000Z`)
-    const end = new Date(getNextBillingPeriodStart(start, closingDay))
-    end.setUTCDate(end.getUTCDate() - 1)
-
-    const formatter = new Intl.DateTimeFormat('es-MX', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        timeZone: 'UTC',
-    })
-
-    return `${formatter.format(start)} - ${formatter.format(end)}`
-}
-
-function getContinuousBillingPeriodKeys(
-    periodKeys: Set<string>,
-    closingDay: number,
-) {
-    const sortedKeys = Array.from(periodKeys).sort()
-    const firstKey = sortedKeys[0]
-    const lastKey = sortedKeys.at(-1)
-
-    if (!firstKey || !lastKey) return []
-
-    const keys: string[] = []
-    let periodStart = new Date(`${firstKey}T00:00:00.000Z`)
-    const lastStart = new Date(`${lastKey}T00:00:00.000Z`)
-
-    while (periodStart.getTime() <= lastStart.getTime()) {
-        keys.push(dateKey(periodStart))
-
-        const nextStart = getNextBillingPeriodStart(periodStart, closingDay)
-        if (nextStart.getTime() <= periodStart.getTime()) break
-
-        periodStart = nextStart
-    }
-
-    return keys
-}
-
 function isUnpaidCharge(charge: ChargeWithCategory) {
     return charge.paid < charge.amount
 }
+
+const EMPTY_CHARGES: ChargeWithCategory[] = []
 
 export function ChargesTable({
     cardId,
@@ -498,7 +414,7 @@ export function ChargesTable({
             data:
                 s.activeCardId === cardId && s.activeUserId === userId
                     ? s.charges
-                    : [],
+                    : EMPTY_CHARGES,
             card:
                 s.activeCardId === cardId && s.activeUserId === userId
                     ? s.card
@@ -508,16 +424,14 @@ export function ChargesTable({
         })),
     )
     const closingDay = card?.closing_day ?? 1
-    const currentBillingPeriod = dateKey(
-        getBillingPeriodStart(new Date(), closingDay),
-    )
+    const currentBillingPeriod = getBillingPeriodStart(Temporal.Now.plainDateISO(), closingDay).toString()
     const [periodMode, setPeriodMode] = useState<BillingPeriodMode>('month')
     const [selectedPeriod, setSelectedPeriod] = useState(currentBillingPeriod)
     const billingPeriods = useMemo<BillingPeriodOption[]>(() => {
         const periodKeys = new Set([currentBillingPeriod])
         for (const charge of data) {
             periodKeys.add(
-                dateKey(getBillingPeriodStart(charge.scheduled_for, closingDay)),
+                getBillingPeriodStart(charge.scheduled_for, closingDay).toString(),
             )
         }
 
@@ -538,9 +452,7 @@ export function ChargesTable({
             if (periodMode === 'unpaid') {
                 if (!isUnpaidCharge(charge)) continue
             } else {
-                const periodKey = dateKey(
-                    getBillingPeriodStart(charge.scheduled_for, closingDay),
-                )
+                const periodKey = getBillingPeriodStart(charge.scheduled_for, closingDay).toString()
                 if (periodKey !== selectedPeriod) continue
             }
 

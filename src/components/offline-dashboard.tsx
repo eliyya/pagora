@@ -1,5 +1,7 @@
 'use client'
 
+import { app } from '@/lib/routes'
+
 import { useEffect, useState } from 'react'
 import {
     CloudOffIcon,
@@ -77,7 +79,7 @@ export function OfflineDashboard() {
         setClearingLocalCopy(true)
         try {
             await clearUserOfflineView(userId)
-            window.location.replace('/offline')
+            window.location.replace(app.offline())
         } catch {
             setClearingLocalCopy(false)
             toast.error('No se pudo ocultar la copia local.')
@@ -140,7 +142,7 @@ export function OfflineDashboard() {
             if (checking) return
             checking = true
             try {
-                const response = await fetch('/api/mcp/version', {
+                const response = await fetch(app.api.mcp.version(), {
                     cache: 'no-store',
                     headers: { Accept: 'application/json' },
                 })
@@ -148,8 +150,8 @@ export function OfflineDashboard() {
 
                 const target =
                     view.status === 'ready'
-                        ? `/dashboard/card/${encodeURIComponent(view.card.id)}`
-                        : '/dashboard'
+                        ? app.dashboard.card.$card_id(encodeURIComponent(view.card.id))
+                        : app.dashboard()
                 if (window.location.pathname === target) {
                     window.location.reload()
                 } else {
@@ -199,7 +201,7 @@ export function OfflineDashboard() {
                                 key={card.id}
                                 variant='outline'
                                 render={
-                                    <a href={`/dashboard/card/${card.id}`} />
+                                    <a href={app.dashboard.card.$card_id(card.id)} />
                                 }
                             >
                                 <CreditCardIcon />
@@ -257,7 +259,7 @@ export function OfflineDashboard() {
                             aria-label='Cambiar tarjeta offline'
                             value={view.card.id}
                             onChange={(event) => {
-                                window.location.href = `/dashboard/card/${event.target.value}`
+                                window.location.href = app.dashboard.card.$card_id(event.target.value)
                             }}
                             className='h-8 max-w-40 rounded-md border bg-background px-2 text-sm'
                         >

@@ -1,9 +1,11 @@
+import { app } from '@/lib/routes'
 import { createDiscordPKCE, readDiscordVerifier, DISCORD_OAUTH_COOKIE, DISCORD_OAUTH_MAX_AGE } from '@/lib/discord-pkce'
 import { PROVIDERS } from '@/db/generated/prisma/enums'
 import { db } from '@/db/prisma'
 import { COOKIES, DISCORD_URL_REDIRECT } from '@/lib/constants'
 import { createJWT, encrypt, generateRefreshToken, weakHash } from '@/lib/crypt'
 import {
+    APP_URL,
     DISCORD_APLICATION_ID,
     NODE_ENV,
 } from '@/lib/envs'
@@ -24,14 +26,14 @@ interface DiscordOAuthErrorResponse {
     error_description?: string
 }
 
-function redirectToLoginWithOAuthError(req: NextRequest) {
-    const url = new URL('/auth/login', req.url)
+function redirectToLoginWithOAuthError() {
+    const url = new URL(app.auth.login(), APP_URL)
     url.searchParams.set('error', 'discord_oauth')
     return clearOAuthCookie(NextResponse.redirect(url))
 }
 
 function clearOAuthCookie(response: NextResponse) {
-    response.cookies.set(DISCORD_OAUTH_COOKIE, '', { httpOnly: true, secure: NODE_ENV === 'production', sameSite: 'lax', path: '/api/auth/login', maxAge: 0 })
+    response.cookies.set(DISCORD_OAUTH_COOKIE, '', { httpOnly: true, secure: NODE_ENV === 'production', sameSite: 'lax', path: app.api.auth.login(), maxAge: 0 })
     response.headers.set('Cache-Control', 'no-store')
     return response
 }
@@ -76,18 +78,18 @@ function loginWithDiscordCode(code: string, verifier: string) {
 
 export async function GET(req: NextRequest) {
     const code = req.nextUrl.searchParams.get('code')
-    if (req.nextUrl.searchParams.has('error')) return redirectToLoginWithOAuthError(req)
+    if (req.nextUrl.searchParams.has('error')) return redirectToLoginWithOAuthError()
 
     const prevsession = req.cookies.get(COOKIES.SESSION)?.value
     if (!code && prevsession) {
         const jwtPayload = await verifySessionJWT(prevsession).catch(() => null)
         if (jwtPayload) {
-            return NextResponse.redirect(new URL('/dashboard', req.url))
+            return NextResponse.redirect(new URL(app.dashboard(), APP_URL))
         }
     }
 
     if (typeof code !== 'string') {
-        if (req.nextUrl.searchParams.has('state')) return redirectToLoginWithOAuthError(req)
+        if (req.nextUrl.searchParams.has('state')) return redirectToLoginWithOAuthError()
         const pkce = await createDiscordPKCE()
         const url = new URL('https://discord.com/oauth2/authorize')
         url.searchParams.append('client_id', DISCORD_APLICATION_ID)
@@ -101,7 +103,7 @@ export async function GET(req: NextRequest) {
         response.headers.set('Cache-Control', 'no-store')
         response.cookies.set(DISCORD_OAUTH_COOKIE, pkce.cookie, {
             httpOnly: true, secure: NODE_ENV === 'production', sameSite: 'lax',
-            path: '/api/auth/login', maxAge: DISCORD_OAUTH_MAX_AGE,
+            path: app.api.auth.login(), maxAge: DISCORD_OAUTH_MAX_AGE,
         })
         return response
     }
@@ -109,12 +111,22 @@ export async function GET(req: NextRequest) {
         req.cookies.get(DISCORD_OAUTH_COOKIE)?.value,
         req.nextUrl.searchParams.get('state'),
     )
-    if (!code || !verifier) return redirectToLoginWithOAuthError(req)
+    if (!code || !verifier) {
+        console.error('Discord OAuth callback rejected', {
+            hasCode: Boolean(code),
+            hasState: Boolean(req.nextUrl.searchParams.get('state')),
+            hasOAuthCookie: Boolean(req.cookies.get(DISCORD_OAUTH_COOKIE)?.value),
+        })
+        return redirectToLoginWithOAuthError()
+    }
     let login: DiscordLoginResult
     try {
         login = await loginWithDiscordCode(code, verifier)
-    } catch {
-        return redirectToLoginWithOAuthError(req)
+    } catch (error) {
+        console.error('Discord OAuth login failed', {
+            name: error instanceof Error ? error.name : 'UnknownError',
+        })
+        return redirectToLoginWithOAuthError()
     }
     if (!login.success) {
         console.error('Discord OAuth token exchange failed', {
@@ -122,10 +134,10 @@ export async function GET(req: NextRequest) {
             error: login.error,
             description: login.description,
         })
-        return redirectToLoginWithOAuthError(req)
+        return redirectToLoginWithOAuthError()
     }
 
-    const res = NextResponse.redirect(new URL('/dashboard', req.url))
+    const res = NextResponse.redirect(new URL(app.dashboard(), APP_URL))
 
     res.cookies.set(COOKIES.SESSION, login.jwt, {
         httpOnly: true,

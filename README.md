@@ -210,3 +210,10 @@ Enable **Public Client** under OAuth2 in the Discord Developer Portal. Register
 `https://pagora.eliyya.dev/api/auth/login`). Set `DISCORD_APLICATION_ID`; no client
 secret is needed. The login uses PKCE S256 and validates OAuth state with a signed,
 HttpOnly cookie that expires after ten minutes and is cleared after the callback.
+
+## Type checking
+
+Run `pnpm typecheck` to generate route types and check the project with native
+TypeScript 7.0.2 (installed as `typescript-native`). The build also runs this
+native compiler. The `typescript` dependency remains on 5.9.3 for Next.js and
+ESLint integrations that still rely on the JavaScript compiler API.

@@ -1,3 +1,4 @@
+import { app } from '@/lib/routes'
 import { createSerwistRoute } from '@serwist/turbopack'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -111,7 +112,7 @@ if (!revision) {
 export const { dynamic, dynamicParams, revalidate, generateStaticParams, GET } =
     createSerwistRoute({
         additionalPrecacheEntries: [
-            { url: '/offline', revision },
+            { url: app.offline(), revision },
             { url: '/manifest.webmanifest', revision },
         ],
         globPatterns: [

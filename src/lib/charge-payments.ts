@@ -1,3 +1,4 @@
+import { Temporal } from 'temporal-polyfill'
 import 'server-only'
 
 import { createHash } from 'node:crypto'
@@ -69,12 +70,7 @@ async function lockCard(tx: Prisma.TransactionClient, cardId: string) {
 }
 
 function todayUtcDateOnly() {
-    const now = new Date()
-    return [
-        now.getUTCFullYear(),
-        String(now.getUTCMonth() + 1).padStart(2, '0'),
-        String(now.getUTCDate()).padStart(2, '0'),
-    ].join('-')
+    return Temporal.Now.plainDateISO('UTC').toString()
 }
 
 function paymentRequestHash(requestedAmount: number, asOfDate: string) {

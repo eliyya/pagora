@@ -1,5 +1,7 @@
 'use client'
 
+import { monthKey, plainDate } from '@/lib/dates'
+
 import { FormEvent, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,12 +20,7 @@ function money(cents: number) {
     }).format(cents / 100)
 }
 
-function monthKey(offset = 0) {
-    const date = new Date()
-    date.setDate(1)
-    date.setMonth(date.getMonth() + offset)
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-}
+
 
 function CategoryBudgetCard({
     category,
@@ -134,7 +131,7 @@ export function BudgetCategoriesPanel() {
             if (
                 charge.kind === 'installment_parent' ||
                 !charge.category_id ||
-                charge.scheduled_for.toISOString().slice(0, 7) !==
+                plainDate(charge.scheduled_for).toString().slice(0, 7) !==
                     currentMonth
             ) {
                 continue

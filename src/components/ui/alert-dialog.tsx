@@ -4,7 +4,6 @@ import * as React from 'react'
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { XIcon } from 'lucide-react'
 
 function AlertDialog({ ...props }: DialogPrimitive.Root.Props) {
     return <DialogPrimitive.Root data-slot='alert-dialog' {...props} />
