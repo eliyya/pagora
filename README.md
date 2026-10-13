@@ -213,7 +213,6 @@ HttpOnly cookie that expires after ten minutes and is cleared after the callback
 
 ## Type checking
 
-Run `pnpm typecheck` to generate route types and check the project with native
-TypeScript 7.0.2 (installed as `typescript-native`). The build also runs this
-native compiler. The `typescript` dependency remains on 5.9.3 for Next.js and
-ESLint integrations that still rely on the JavaScript compiler API.
+Run `pnpm typecheck` to generate route types and check the project with
+TypeScript 6.0.3. The build runs the same compiler. This version is compatible
+with the JavaScript compiler API used by Next.js and typescript-eslint.

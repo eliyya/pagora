@@ -54,6 +54,6 @@
         "prisma": "7.10.0",
         "serwist": "9.5.13",
         "tailwindcss": "4.3.3",
-        "typescript": "7.0.2"
+        "typescript": "6.0.3"
     }
 }
