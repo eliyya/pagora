@@ -68,7 +68,10 @@ const runtimeCaching: RuntimeCaching[] = [
 const serwist = new Serwist({
     cacheId: 'pagora',
     precacheEntries: self.__SW_MANIFEST,
-    precacheOptions: { cleanupOutdatedCaches: true },
+    precacheOptions: {
+        cleanupOutdatedCaches: true,
+        ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^dpl$/],
+    },
     // Activate the OAuth callback fix as soon as the browser downloads it;
     // otherwise an already-open Pagora tab keeps the previous worker alive.
     skipWaiting: true,
