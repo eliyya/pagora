@@ -1,3 +1,5 @@
+import { epochMilliseconds } from '@/lib/dates'
+import { Temporal } from 'temporal-polyfill'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { db } from '@/db/prisma'
 import { weakHash } from './crypt'
@@ -119,7 +121,7 @@ export async function getAgentTokenFromRequest(request: Request) {
         throw new AgentAuthError('Bearer token has been revoked')
     }
 
-    if (token.expires_at && token.expires_at.getTime() <= Date.now()) {
+    if (token.expires_at && epochMilliseconds(token.expires_at) <= Temporal.Now.instant().epochMilliseconds) {
         throw new AgentAuthError('Bearer token has expired')
     }
 

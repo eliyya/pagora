@@ -1,5 +1,7 @@
 'use client'
 
+import { app } from '@/lib/routes'
+
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
     DropdownMenu,
@@ -91,7 +93,7 @@ export function NavUser() {
             channel.postMessage({ type: 'logout', userId })
             channel.close()
         }
-        window.location.href = '/api/auth/logout'
+        window.location.href = app.api.auth.logout()
     }
 
     return (

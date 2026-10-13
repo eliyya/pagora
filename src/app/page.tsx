@@ -1,3 +1,4 @@
+import { app } from '@/lib/routes'
 import {
     ArrowRight,
     CheckCircle2,
@@ -50,7 +51,7 @@ export default async function Home() {
                         Cómo funciona
                     </a>
                 </nav>
-                <a href='/auth/login'>
+                <a href={app.auth.login()}>
                     <Button
                         size='sm'
                         className='gap-2 rounded-xl bg-accent text-accent-foreground shadow-sm shadow-accent/40 hover:bg-accent/90'
@@ -84,7 +85,7 @@ export default async function Home() {
                     </p>
 
                     <div className='mt-8 flex flex-col gap-3 sm:flex-row'>
-                        <a href='/auth/login'>
+                        <a href={app.auth.login()}>
                             <Button
                                 size='lg'
                                 className='h-12 gap-2 rounded-xl bg-accent px-6 text-accent-foreground shadow-lg shadow-accent/40 transition-all hover:scale-[1.02] hover:bg-accent/90 hover:shadow-xl hover:shadow-accent/50'
@@ -264,7 +265,7 @@ export default async function Home() {
                         Entra con Discord y empieza a registrar cargos con el
                         contexto que tu estado de cuenta no guarda.
                     </p>
-                    <a href='/auth/login' className='mt-8 inline-block'>
+                    <a href={app.auth.login()} className='mt-8 inline-block'>
                         <Button
                             size='lg'
                             className='h-12 gap-2 rounded-xl bg-accent px-8 text-accent-foreground shadow-lg shadow-accent/40 transition-all hover:scale-[1.02] hover:bg-accent/90'

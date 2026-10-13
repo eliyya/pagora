@@ -1,3 +1,4 @@
+import { app } from '@/lib/routes'
 import { db } from '@/db/prisma'
 import {
     AgentAuthError,
@@ -715,13 +716,13 @@ export async function GET(request: Request) {
     return Response.json({
         ...getMcpVersion(request),
         transport: 'streamable-http',
-        endpoint: new URL('/api/mcp', request.url).toString(),
-        version_endpoint: new URL('/api/mcp/version', request.url).toString(),
+        endpoint: new URL(app.api.mcp(), request.url).toString(),
+        version_endpoint: new URL(app.api.mcp.version(), request.url).toString(),
         authorization: 'Authorization: Bearer <pagora_agent_token>',
         token_management: {
-            list: new URL('/api/agent-tokens', request.url).toString(),
-            create: new URL('/api/agent-tokens', request.url).toString(),
-            revoke: new URL('/api/agent-tokens/{token_id}', request.url).toString(),
+            list: new URL(app.api['agent-tokens'](), request.url).toString(),
+            create: new URL(app.api['agent-tokens'](), request.url).toString(),
+            revoke: new URL(app.api['agent-tokens'].$token_id('{token_id}'), request.url).toString(),
         },
     })
 }

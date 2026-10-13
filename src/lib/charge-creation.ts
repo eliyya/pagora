@@ -1,3 +1,4 @@
+import { Temporal } from 'temporal-polyfill'
 import 'server-only'
 
 import type {
@@ -98,7 +99,7 @@ export async function createChargeSet(
     }
 
     const category = await resolveCategory(tx, input)
-    const createdAt = input.createdAt ?? new Date()
+    const createdAt = input.createdAt ?? new Date(Temporal.Now.instant().epochMilliseconds)
 
     if (!input.installment) {
         const charge = await tx.charge.create({

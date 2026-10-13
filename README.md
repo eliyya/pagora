@@ -193,3 +193,26 @@ the next login.
 ## Notes
 
 Amounts are stored as integers in cents to avoid floating-point money issues.
+
+## Session configuration
+
+Copy `.env.example` to `.env` and fill in the required values. Sessions use HS256
+with a single `SESSION_SECRET`; RSA public and private keys are no longer needed.
+Generate the secret with `openssl rand -hex 32` and use the same value on all app
+instances. Keep `ENCRYPTION_KEY` separate; it encrypts stored OAuth credentials.
+Existing RSA session tokens are rejected after this change. Valid refresh tokens
+can renew sessions with the new signature; otherwise users must sign in again.
+
+## Discord OAuth configuration
+
+Enable **Public Client** under OAuth2 in the Discord Developer Portal. Register
+`${APP_URL}/api/auth/login` as a redirect (for production:
+`https://pagora.eliyya.dev/api/auth/login`). Set `DISCORD_APLICATION_ID`; no client
+secret is needed. The login uses PKCE S256 and validates OAuth state with a signed,
+HttpOnly cookie that expires after ten minutes and is cleared after the callback.
+
+## Type checking
+
+Run `pnpm typecheck` to generate route types and check the project with
+TypeScript 6.0.3. The build runs the same compiler. This version is compatible
+with the JavaScript compiler API used by Next.js and typescript-eslint.

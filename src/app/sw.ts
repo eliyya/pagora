@@ -1,6 +1,8 @@
 /// <reference lib="esnext" />
 /// <reference lib="webworker" />
 
+import { app } from '@/lib/routes'
+
 import type {
     PrecacheEntry,
     RuntimeCaching,
@@ -41,8 +43,8 @@ const runtimeCaching: RuntimeCaching[] = [
         matcher: ({ request, sameOrigin, url }) =>
             sameOrigin &&
             request.mode === 'navigate' &&
-            (url.pathname === '/offline' ||
-                url.pathname === '/dashboard' ||
+            (url.pathname === app.offline() ||
+                url.pathname === app.dashboard() ||
                 url.pathname.startsWith('/dashboard/card/')),
         handler: networkOnly,
     },
@@ -66,7 +68,10 @@ const runtimeCaching: RuntimeCaching[] = [
 const serwist = new Serwist({
     cacheId: 'pagora',
     precacheEntries: self.__SW_MANIFEST,
-    precacheOptions: { cleanupOutdatedCaches: true },
+    precacheOptions: {
+        cleanupOutdatedCaches: true,
+        ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^dpl$/],
+    },
     // Activate the OAuth callback fix as soon as the browser downloads it;
     // otherwise an already-open Pagora tab keeps the previous worker alive.
     skipWaiting: true,
@@ -80,14 +85,14 @@ const serwist = new Serwist({
     fallbacks: {
         entries: [
             {
-                url: '/offline',
+                url: app.offline(),
                 matcher: ({ request }) => {
                     const url = new URL(request.url)
                     return (
                         url.origin === self.location.origin &&
                         request.mode === 'navigate' &&
-                        (url.pathname === '/offline' ||
-                            url.pathname === '/dashboard' ||
+                        (url.pathname === app.offline() ||
+                            url.pathname === app.dashboard() ||
                             url.pathname.startsWith('/dashboard/card/'))
                     )
                 },

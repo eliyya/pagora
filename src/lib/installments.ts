@@ -1,3 +1,5 @@
+import { Temporal } from 'temporal-polyfill'
+
 export const MIN_INSTALLMENT_COUNT = 2
 export const MAX_INSTALLMENT_COUNT = 60
 
@@ -30,38 +32,12 @@ type ChargeRoleLike = {
 
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 
-function isLeapYear(year: number) {
-    return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
-}
-
-function daysInMonth(year: number, month: number) {
-    if (month === 2) return isLeapYear(year) ? 29 : 28
-    return [4, 6, 9, 11].includes(month) ? 30 : 31
-}
-
 function parseDateOnly(value: string) {
-    const match = DATE_ONLY_PATTERN.exec(value)
-    if (!match) return null
-
-    const year = Number(match[1])
-    const month = Number(match[2])
-    const day = Number(match[3])
-    if (
-        year < 1 ||
-        year > 9999 ||
-        month < 1 ||
-        month > 12 ||
-        day < 1 ||
-        day > daysInMonth(year, month)
-    ) {
-        return null
-    }
-
-    return { year, month, day }
-}
-
-function formatDateOnly(year: number, month: number, day: number) {
-    return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    if (!DATE_ONLY_PATTERN.test(value)) return null
+    try {
+        const date = Temporal.PlainDate.from(value, { overflow: 'reject' })
+        return date.year >= 1 && date.year <= 9999 ? { year: date.year, month: date.month, day: date.day } : null
+    } catch { return null }
 }
 
 export function isDateOnly(value: unknown): value is string {
@@ -136,15 +112,10 @@ export function addMonthsPreservingDay(
         throw new RangeError('The month offset must be a non-negative integer.')
     }
 
-    const absoluteMonth = first.year * 12 + first.month - 1 + monthOffset
-    const year = Math.floor(absoluteMonth / 12)
-    const month = (absoluteMonth % 12) + 1
-    if (year > 9999) {
-        throw new RangeError('The installment date exceeds year 9999.')
-    }
+    const date = Temporal.PlainDate.from(firstInstallmentDate).add({ months: monthOffset })
+    if (date.year > 9999) throw new RangeError('The installment date exceeds year 9999.')
+    return date.toString()
 
-    const day = Math.min(first.day, daysInMonth(year, month))
-    return formatDateOnly(year, month, day)
 }
 
 export function formatInstallmentName(

@@ -1,3 +1,4 @@
+import { Temporal } from 'temporal-polyfill'
 import 'client-only'
 
 import type {
@@ -497,7 +498,7 @@ export async function saveOfflineReadyCard(
     const value: StoredOfflineSession = {
         ...session,
         key: ACTIVE_OFFLINE_SESSION_KEY,
-        updatedAt: Date.now(),
+        updatedAt: Temporal.Now.instant().epochMilliseconds,
     }
     if (!isStoredOfflineSession(value)) {
         throw new Error('Invalid offline session')
@@ -683,7 +684,7 @@ export async function saveOptimisticCardMutation(
         userId: cache.userId,
         cardId: cache.cardId,
         mutation,
-        queuedAt: Date.now(),
+        queuedAt: Temporal.Now.instant().epochMilliseconds,
         attempts: 0,
         lastAttemptAt: null,
         lastError: null,
@@ -728,7 +729,7 @@ export async function replaceCardMutationConflict(
         userId: cache.userId,
         cardId: cache.cardId,
         mutation,
-        queuedAt: Date.now(),
+        queuedAt: Temporal.Now.instant().epochMilliseconds,
         attempts: 0,
         lastAttemptAt: null,
         lastError: null,
@@ -802,7 +803,7 @@ export async function markCardMutationsAttempted(
         const completion = waitForTransaction(transaction)
         const store = transaction.objectStore(OUTBOX_STORE)
         const mutationIndex = store.index(MUTATION_ID_INDEX)
-        const attemptedAt = Date.now()
+        const attemptedAt = Temporal.Now.instant().epochMilliseconds
 
         for (const mutationId of new Set(mutationIds)) {
             const request = mutationIndex.get(mutationId)
@@ -920,7 +921,7 @@ export async function saveCardMutationConflict(
         cardId,
         mutation,
         result,
-        detectedAt: Date.now(),
+        detectedAt: Temporal.Now.instant().epochMilliseconds,
     }
 
     try {

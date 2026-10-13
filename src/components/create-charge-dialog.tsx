@@ -18,7 +18,7 @@ import { useCreateDialogState } from '@/stores/charges.store'
 import { useShallow } from 'zustand/shallow'
 import { useInfo } from '@/stores/info.store'
 import { CurrencyInput } from './currency-input'
-import { Checkbox } from '@/components/ui/checkbox'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
     isDateOnly,
     MAX_INSTALLMENT_COUNT,
@@ -120,7 +120,7 @@ export function CreateChargeDialog() {
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-sm'>
-                <form onSubmit={handleSubmit}>
+                <form onSubmit={handleSubmit} className='flex flex-col gap-6'>
                     <DialogHeader>
                         <DialogTitle>New Charge</DialogTitle>
                         <DialogDescription>
@@ -178,16 +178,34 @@ export function CreateChargeDialog() {
                             </datalist>
                         </Field>
                         <Field>
-                            <div className='flex items-center gap-2'>
-                                <Checkbox
-                                    id='installments-1'
-                                    checked={installmentsEnabled}
-                                    onCheckedChange={(checked) =>
-                                        setInstallmentsEnabled(checked === true)
-                                    }
-                                />
-                                <Label htmlFor='installments-1'>A meses</Label>
-                            </div>
+                            <Label id='payment-type-label'>Tipo de pago</Label>
+                            <ToggleGroup
+                                aria-labelledby='payment-type-label'
+                                multiple={false}
+                                spacing={1}
+                                value={[installmentsEnabled ? 'deferred' : 'single']}
+                                disabled={saving}
+                                onValueChange={(values) => {
+                                    if (!values.length) return
+                                    setInstallmentsEnabled(values[0] === 'deferred')
+                                }}
+                                className='w-full rounded-lg bg-muted p-1'
+                            >
+                                <ToggleGroupItem
+                                    type='button'
+                                    value='single'
+                                    className='flex-1 rounded-md aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-sm'
+                                >
+                                    Único
+                                </ToggleGroupItem>
+                                <ToggleGroupItem
+                                    type='button'
+                                    value='deferred'
+                                    className='flex-1 rounded-md aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-sm'
+                                >
+                                    Diferido
+                                </ToggleGroupItem>
+                            </ToggleGroup>
                         </Field>
                         {installmentsEnabled ? (
                             <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>

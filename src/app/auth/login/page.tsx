@@ -1,3 +1,4 @@
+import { app } from '@/lib/routes'
 import { Button } from '@/components/ui/button'
 import { ArrowRight, Clock3, ShieldCheck, Sparkles } from 'lucide-react'
 import Image from 'next/image'
@@ -97,7 +98,7 @@ export default async function page({ searchParams }: LoginPageProps) {
                                 )}
 
                                 <a
-                                    href='/api/auth/login'
+                                    href={app.api.auth.login()}
                                     className='mt-5 block'
                                 >
                                     <Button

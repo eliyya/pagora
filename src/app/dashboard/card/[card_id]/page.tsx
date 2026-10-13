@@ -1,3 +1,4 @@
+import { app } from '@/lib/routes'
 import { ChargesTable } from '@/components/data-table'
 import { SectionCards } from '@/components/section-cards'
 
@@ -26,11 +27,11 @@ async function Cached({
     const { card_id } = await params
     const user = await getCurrentUserAction()
     if (!user) {
-        redirect('/auth/login')
+        redirect(app.auth.login())
     }
     const result = await getCardAccess(card_id, user.id)
     if (!result || result.access === 'none') {
-        redirect('/dashboard')
+        redirect(app.dashboard())
     }
     return (
         <DashboardMainLayout title={result.card.name}>

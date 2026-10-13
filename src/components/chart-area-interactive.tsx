@@ -1,5 +1,8 @@
 'use client'
 
+import { Temporal } from 'temporal-polyfill'
+import { plainDate } from '@/lib/dates'
+
 import * as React from 'react'
 import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts'
 
@@ -48,10 +51,8 @@ export function ChartAreaInteractive() {
     )
     const summary = useInfo((s) => s.summary)
 
-    const today = new Date()
-    const todayKey = `${today.getFullYear()}-${String(
-        today.getMonth() + 1,
-    ).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    const today = Temporal.Now.plainDateISO()
+    const todayKey = today.toString()
     const filteredData = summary.filter((item) => {
         let daysToSubtract = 90
         if (timeRange === '30d') {
@@ -59,11 +60,7 @@ export function ChartAreaInteractive() {
         } else if (timeRange === '7d') {
             daysToSubtract = 7
         }
-        const startDate = new Date(today)
-        startDate.setDate(startDate.getDate() - daysToSubtract)
-        const startKey = `${startDate.getFullYear()}-${String(
-            startDate.getMonth() + 1,
-        ).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`
+        const startKey = today.subtract({ days: daysToSubtract }).toString()
         return item.date >= startKey && item.date <= todayKey
     })
 
@@ -160,12 +157,7 @@ export function ChartAreaInteractive() {
                             tickMargin={8}
                             minTickGap={32}
                             tickFormatter={(value) => {
-                                const date = new Date(value)
-                                return date.toLocaleDateString('en-US', {
-                                    month: 'short',
-                                    day: 'numeric',
-                                    timeZone: 'UTC',
-                                })
+                                return plainDate(String(value)).toLocaleString('en-US', { month: 'short', day: 'numeric' })
                             }}
                         />
                         <ChartTooltip
@@ -173,13 +165,14 @@ export function ChartAreaInteractive() {
                             content={
                                 <ChartTooltipContent
                                     labelFormatter={(value) => {
-                                        return new Date(
-                                            value,
-                                        ).toLocaleDateString('en-US', {
-                                            month: 'short',
-                                            day: 'numeric',
-                                            timeZone: 'UTC',
-                                        })
+                                        if (
+                                            typeof value !== 'string' &&
+                                            typeof value !== 'number'
+                                        ) return null
+                                        try {
+                                            return plainDate(String(value)).toLocaleString('en-US', { month: 'short', day: 'numeric' })
+                                        } catch { return null }
+
                                     }}
                                     indicator='dot'
                                 />

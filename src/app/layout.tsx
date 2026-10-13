@@ -65,6 +65,30 @@ export default function RootLayout({
                 inter.variable,
             )}
         >
+            <head>
+                {process.env.NODE_ENV === 'development' && (
+                    <script
+                        dangerouslySetInnerHTML={{ __html: `
+                            (async () => {
+                                if (!('serviceWorker' in navigator)) return;
+                                const registrations = await navigator.serviceWorker.getRegistrations();
+                                const workers = registrations.filter(registration => {
+                                    const worker = registration.active || registration.waiting || registration.installing;
+                                    return worker && new URL(worker.scriptURL).pathname === '/serwist/sw.js';
+                                });
+                                if (!workers.length) return;
+                                await Promise.all(workers.map(worker => worker.unregister()));
+                                const names = await caches.keys();
+                                await Promise.all(names.filter(name => name.includes('pagora')).map(name => caches.delete(name)));
+                                if (navigator.serviceWorker.controller && !sessionStorage.getItem('pagora:dev-worker-reset')) {
+                                    sessionStorage.setItem('pagora:dev-worker-reset', '1');
+                                    location.reload();
+                                }
+                            })().catch(console.error);
+                        ` }}
+                    />
+                )}
+            </head>
             <body className='min-h-full flex flex-col'>
                 <ThemeProvider
                     attribute='class'

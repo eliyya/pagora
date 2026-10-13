@@ -1,5 +1,7 @@
 'use client'
 
+import { app } from '@/lib/routes'
+
 import {
     ChevronRight,
     CreditCardIcon,
@@ -68,7 +70,7 @@ export function NavMain() {
                                         <SidebarMenuSubButton
                                             render={
                                                 <a
-                                                    href={`/dashboard/card/${card.id}`}
+                                                    href={app.dashboard.card.$card_id(card.id)}
                                                 />
                                             }
                                         >
@@ -108,7 +110,7 @@ export function NavMain() {
                                         <SidebarMenuSubButton
                                             render={
                                                 <a
-                                                    href={`/dashboard/card/${card.id}`}
+                                                    href={app.dashboard.card.$card_id(card.id)}
                                                 />
                                             }
                                         >
@@ -147,7 +149,7 @@ export function NavMain() {
                                         <SidebarMenuSubButton
                                             render={
                                                 <a
-                                                    href={`/dashboard/card/${card.id}`}
+                                                    href={app.dashboard.card.$card_id(card.id)}
                                                 />
                                             }
                                         >

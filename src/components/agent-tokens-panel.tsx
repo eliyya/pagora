@@ -1,5 +1,10 @@
 'use client'
 
+import { Temporal } from 'temporal-polyfill'
+import { instant } from '@/lib/dates'
+
+import { app } from '@/lib/routes'
+
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { CopyIcon, KeyRoundIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -46,12 +51,9 @@ interface CreateTokenResponse {
 
 function formatDate(value: string | null) {
     if (!value) return 'Never'
-    return new Intl.DateTimeFormat('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    }).format(new Date(value))
+    return instant(value).toZonedDateTimeISO(Temporal.Now.timeZoneId()).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    })
 }
 
 export function AgentTokensPanel() {
@@ -69,7 +71,7 @@ export function AgentTokensPanel() {
 
     async function loadTokens() {
         setError(null)
-        const response = await fetch('/api/agent-tokens')
+        const response = await fetch(app.api['agent-tokens']())
         if (!response.ok) {
             throw new Error('Could not load agent tokens')
         }
@@ -100,7 +102,7 @@ export function AgentTokensPanel() {
             setError(null)
             setCreatedToken(null)
             try {
-                const response = await fetch('/api/agent-tokens', {
+                const response = await fetch(app.api['agent-tokens'](), {
                     method: 'POST',
                     headers: { 'content-type': 'application/json' },
                     body: JSON.stringify({ name, scopes }),
@@ -121,7 +123,7 @@ export function AgentTokensPanel() {
         startTransition(async () => {
             setError(null)
             try {
-                const response = await fetch(`/api/agent-tokens/${id}`, {
+                const response = await fetch(app.api['agent-tokens'].$token_id(id), {
                     method: 'DELETE',
                 })
                 if (!response.ok) {

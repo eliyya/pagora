@@ -4,7 +4,7 @@ import {
     createDecipheriv,
     createHash,
 } from 'node:crypto'
-import { APP_URL, ENCRYPTION_KEY, getPrivateKey } from './envs'
+import { APP_URL, ENCRYPTION_KEY, getSessionKey } from './envs'
 import { SignJWT } from 'jose'
 
 const ALGORITHM = 'aes-256-gcm'
@@ -59,12 +59,12 @@ export async function createJWT({ sub, session_id }: CreateJWTProps) {
     const jwt = await new SignJWT({
         session_id,
     })
-        .setProtectedHeader({ alg: 'RS256' })
+        .setProtectedHeader({ alg: 'HS256' })
         .setIssuedAt()
         .setSubject(sub)
         .setIssuer(APP_URL)
         .setAudience('pagora')
         .setExpirationTime('1h')
-        .sign(await getPrivateKey())
+        .sign(getSessionKey())
     return jwt
 }

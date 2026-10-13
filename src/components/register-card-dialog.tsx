@@ -1,5 +1,7 @@
 'use client'
 
+import { app } from '@/lib/routes'
+
 import {
     Dialog,
     DialogClose,
@@ -37,7 +39,7 @@ export function RegisterCardDialog(
         if (state.done?.id) {
             queueMicrotask(() => {
                 toggle(false)
-                push(`/dashboard/card/${state.lastCardId}`)
+                push(app.dashboard.card.$card_id(state.done!.id))
             })
         }
     }, [state.done?.id, toggle, state, push])

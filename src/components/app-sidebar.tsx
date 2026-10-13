@@ -1,5 +1,7 @@
 'use client'
 
+import { app } from '@/lib/routes'
+
 import { NavMain } from '@/components/nav-main'
 import { NavUser } from '@/components/nav-user'
 import {
@@ -22,7 +24,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     <SidebarMenuItem>
                         <SidebarMenuButton
                             className='data-[slot=sidebar-menu-button]:p-1.5!'
-                            render={<a href='/dashboard' />}
+                            render={<a href={app.dashboard()} />}
                         >
                             <CommandIcon className='size-5!' />
                             <span className='text-base font-semibold'>

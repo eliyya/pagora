@@ -1,3 +1,4 @@
+import { app } from '@/lib/routes'
 import { createSerwistRoute } from '@serwist/turbopack'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -31,10 +32,12 @@ function readJson<T>(relativePath: string) {
 
 function addNextAsset(assets: Set<string>, value: unknown) {
     if (typeof value !== 'string') return
-    if (value.startsWith('/_next/static/')) {
-        assets.add(value)
-    } else if (value.startsWith('static/')) {
-        assets.add(`/_next/${value}`)
+    // Manifests include ?dpl= for deployment versioning; glob entries are files.
+    const path = value.split(/[?#]/, 1)[0]
+    if (path.startsWith('/_next/static/')) {
+        assets.add(path)
+    } else if (path.startsWith('static/')) {
+        assets.add(`/_next/${path}`)
     }
 }
 
@@ -111,7 +114,7 @@ if (!revision) {
 export const { dynamic, dynamicParams, revalidate, generateStaticParams, GET } =
     createSerwistRoute({
         additionalPrecacheEntries: [
-            { url: '/offline', revision },
+            { url: app.offline(), revision },
             { url: '/manifest.webmanifest', revision },
         ],
         globPatterns: [

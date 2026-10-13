@@ -1,5 +1,11 @@
 'use client'
 
+import { app } from '@/lib/routes'
+
+import { epochMilliseconds } from '@/lib/dates'
+
+import { Temporal } from 'temporal-polyfill'
+
 import { fetchInfoAction } from '@/actions/info.action'
 import {
     batchPayChargesAction,
@@ -223,12 +229,7 @@ function readPageSize() {
 }
 
 function localDateOnly() {
-    const date = new Date()
-    return [
-        date.getFullYear(),
-        String(date.getMonth() + 1).padStart(2, '0'),
-        String(date.getDate()).padStart(2, '0'),
-    ].join('-')
+    return Temporal.Now.plainDateISO().toString()
 }
 
 type PendingBatchPayment = {
@@ -441,24 +442,24 @@ function deserializeCache(cache: StoredCardCache): RuntimeCardCache | null {
                     charge.card_id !== runtime.cardId ||
                     !Number.isSafeInteger(charge.revision) ||
                     charge.revision < 0 ||
-                    Number.isNaN(charge.scheduled_for.getTime()) ||
-                    Number.isNaN(charge.created_at.getTime()) ||
-                    Number.isNaN(charge.updated_at.getTime()) ||
+                    Number.isNaN(epochMilliseconds(charge.scheduled_for)) ||
+                    Number.isNaN(epochMilliseconds(charge.created_at)) ||
+                    Number.isNaN(epochMilliseconds(charge.updated_at)) ||
                     (charge.category !== null &&
                         (charge.category.card_id !== runtime.cardId ||
                             Number.isNaN(
-                                charge.category.created_at.getTime(),
+                                epochMilliseconds(charge.category.created_at),
                             ) ||
                             Number.isNaN(
-                                charge.category.updated_at.getTime(),
+                                epochMilliseconds(charge.category.updated_at),
                             ))),
             ) ||
             runtime.categories.some(
                 (category) =>
                     typeof category.id !== 'string' ||
                     category.card_id !== runtime.cardId ||
-                    Number.isNaN(category.created_at.getTime()) ||
-                    Number.isNaN(category.updated_at.getTime()),
+                    Number.isNaN(epochMilliseconds(category.created_at)) ||
+                    Number.isNaN(epochMilliseconds(category.updated_at)),
             ) ||
             runtime.summary.some(
                 (entry) =>
@@ -484,7 +485,7 @@ function serializeCache(cache: RuntimeCardCache): StoredCardCache {
         charges: cache.charges.map(serializeCharge),
         categories: cache.categories.map(serializeCategory),
         summary: cache.summary,
-        updatedAt: Date.now(),
+        updatedAt: Temporal.Now.instant().epochMilliseconds,
     }
 }
 
@@ -598,8 +599,8 @@ function applySyncPayload(
         return category ? { ...charge, category } : charge
     }).sort(
         (a, b) =>
-            b.scheduled_for.getTime() - a.scheduled_for.getTime() ||
-            b.created_at.getTime() - a.created_at.getTime(),
+            epochMilliseconds(b.scheduled_for) - epochMilliseconds(a.scheduled_for) ||
+            epochMilliseconds(b.created_at) - epochMilliseconds(a.created_at),
     )
 
     const hasNewerLocalCharge = cache.charges.some(
@@ -835,9 +836,9 @@ function materializePendingMutations(
 
     const nextCharges = Array.from(charges.values()).sort(
         (left, right) =>
-            right.scheduled_for.getTime() -
-                left.scheduled_for.getTime() ||
-            right.created_at.getTime() - left.created_at.getTime(),
+            epochMilliseconds(right.scheduled_for) -
+                epochMilliseconds(left.scheduled_for) ||
+            epochMilliseconds(right.created_at) - epochMilliseconds(left.created_at),
     )
     return {
         ...cache,
@@ -860,7 +861,7 @@ function materializeMutation(
             userId: cache.userId,
             cardId: cache.cardId,
             mutation,
-            queuedAt: Date.now(),
+            queuedAt: Temporal.Now.instant().epochMilliseconds,
             attempts: 0,
             lastAttemptAt: null,
             lastError: null,
@@ -933,9 +934,9 @@ function applyMutationResults(
 
     const nextCharges = Array.from(charges.values()).sort(
         (left, right) =>
-            right.scheduled_for.getTime() -
-                left.scheduled_for.getTime() ||
-            right.created_at.getTime() - left.created_at.getTime(),
+            epochMilliseconds(right.scheduled_for) -
+                epochMilliseconds(left.scheduled_for) ||
+            epochMilliseconds(right.created_at) - epochMilliseconds(left.created_at),
     )
     return {
         ...cache,
@@ -1035,7 +1036,7 @@ function ensureSyncChannel() {
                 syncConflicts: [],
             })
             window.setTimeout(() => {
-                window.location.replace('/auth/login')
+                window.location.replace(app.auth.login())
             }, 250)
         }
     }
@@ -1223,7 +1224,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
                 const search =
                     cache.cursor === null ? '' : `?cursor=${cache.cursor}`
                 const response = await fetchWithSessionRetry(
-                    `/api/cards/${encodeURIComponent(cardId)}/sync${search}`,
+                    `${app.api.cards.$card_id.sync(encodeURIComponent(cardId))}${search}`,
                     {
                         cache: 'no-store',
                         headers: { Accept: 'application/json' },
@@ -1432,7 +1433,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
                             ]),
                         )
                         const response = await fetchWithSessionRetry(
-                            `/api/cards/${encodeURIComponent(cardId)}/sync`,
+                            app.api.cards.$card_id.sync(encodeURIComponent(cardId)),
                             {
                                 method: 'POST',
                                 cache: 'no-store',
@@ -1765,7 +1766,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
                     : null
                 const mutationId = crypto.randomUUID()
                 const chargeId = crypto.randomUUID()
-                const occurredAt = new Date().toISOString()
+                const occurredAt = Temporal.Now.instant().toString()
                 const categoryId = normalizedCategory
                     ? (existingCategory?.id ?? crypto.randomUUID())
                     : null
@@ -1898,7 +1899,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
                       )
                     : null
                 const mutationId = crypto.randomUUID()
-                const occurredAt = new Date().toISOString()
+                const occurredAt = Temporal.Now.instant().toString()
                 const dependsOn = latestPending
                     ? [latestPending.mutationId]
                     : undefined
@@ -2064,7 +2065,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
                         ? {
                               mutationId: crypto.randomUUID(),
                               type: 'installment.delete',
-                              occurredAt: new Date().toISOString(),
+                              occurredAt: Temporal.Now.instant().toString(),
                               dependsOn: latestPending
                                   ? [latestPending.mutationId]
                                   : undefined,
@@ -2074,7 +2075,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
                         : {
                               mutationId: crypto.randomUUID(),
                               type: 'charge.delete',
-                              occurredAt: new Date().toISOString(),
+                              occurredAt: Temporal.Now.instant().toString(),
                               dependsOn: latestPending
                                   ? [latestPending.mutationId]
                                   : undefined,
@@ -2219,7 +2220,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
                     retry = {
                         ...original,
                         mutationId: crypto.randomUUID(),
-                        occurredAt: new Date().toISOString(),
+                        occurredAt: Temporal.Now.instant().toString(),
                         dependsOn: undefined,
                         charge: {
                             ...original.charge,
@@ -2230,7 +2231,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
                     retry = {
                         ...original,
                         mutationId: crypto.randomUUID(),
-                        occurredAt: new Date().toISOString(),
+                        occurredAt: Temporal.Now.instant().toString(),
                         dependsOn: undefined,
                         plan: {
                             ...original.plan,
@@ -2245,7 +2246,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
                         retry = {
                             ...original,
                             mutationId: crypto.randomUUID(),
-                            occurredAt: new Date().toISOString(),
+                            occurredAt: Temporal.Now.instant().toString(),
                             dependsOn,
                             baseRevision: serverCharge.revision,
                         }
@@ -2253,7 +2254,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
                         retry = {
                             mutationId: crypto.randomUUID(),
                             type: 'charge.create',
-                            occurredAt: new Date().toISOString(),
+                            occurredAt: Temporal.Now.instant().toString(),
                             charge: {
                                 id: crypto.randomUUID(),
                                 name: original.name,
@@ -2268,7 +2269,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
                         retry = {
                             ...original,
                             mutationId: crypto.randomUUID(),
-                            occurredAt: new Date().toISOString(),
+                            occurredAt: Temporal.Now.instant().toString(),
                             dependsOn,
                             baseRevision: serverCharge.revision,
                         }
@@ -2276,7 +2277,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
                         retry = {
                             mutationId: crypto.randomUUID(),
                             type: 'installment.create',
-                            occurredAt: new Date().toISOString(),
+                            occurredAt: Temporal.Now.instant().toString(),
                             plan: {
                                 ...original.plan,
                                 id: crypto.randomUUID(),
@@ -2291,7 +2292,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
                     retry = {
                         ...original,
                         mutationId: crypto.randomUUID(),
-                        occurredAt: new Date().toISOString(),
+                        occurredAt: Temporal.Now.instant().toString(),
                         dependsOn,
                         baseRevision: serverCharge.revision,
                     }

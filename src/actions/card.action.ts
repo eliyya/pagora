@@ -1,4 +1,6 @@
 'use server'
+
+import { Temporal } from 'temporal-polyfill'
 import { db } from '@/db/prisma'
 import {
     CreateCard,
@@ -278,7 +280,7 @@ export async function respondToCardInvitationAction(
             where: { id: invitation.id },
             data: {
                 status: 'declined',
-                responded_at: new Date(),
+                responded_at: new Date(Temporal.Now.instant().epochMilliseconds),
             },
         })
         return { data: declined }
@@ -303,7 +305,7 @@ export async function respondToCardInvitationAction(
             where: { id: invitation.id },
             data: {
                 status: 'accepted',
-                responded_at: new Date(),
+                responded_at: new Date(Temporal.Now.instant().epochMilliseconds),
             },
         })
     })

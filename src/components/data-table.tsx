@@ -1,21 +1,18 @@
 'use client'
 
+import { Temporal } from 'temporal-polyfill'
+import { plainDate, instant, getBillingPeriodStart, formatBillingPeriodLabel, getContinuousBillingPeriodKeys } from '@/lib/dates'
+
+import { chargeTableFeatures, type ChargeTableFeatures } from '@/lib/table-features'
+
 import {
-    getCoreRowModel,
-    getFacetedRowModel,
-    getFacetedUniqueValues,
-    getExpandedRowModel,
-    getFilteredRowModel,
-    getPaginationRowModel,
-    getSortedRowModel,
-    useReactTable,
+    useTable,
     type ColumnDef,
     type ColumnFiltersState,
-    type SortingState,
-    type SortingFn,
-    type VisibilityState,
+    type SortFn,
 } from '@tanstack/react-table'
 import { z } from 'zod'
+import { useTableSettings } from '@/stores/table-settings.store'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -27,7 +24,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { CircleCheckIcon, LoaderIcon, EllipsisVerticalIcon } from 'lucide-react'
+import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, EllipsisVerticalIcon } from 'lucide-react'
 import { DataTableColumnHeader } from './data-table-column-header'
 import { useCreateDialogState } from '@/stores/charges.store'
 import { useEditChargeDialogState } from '@/stores/edit-charge.store'
@@ -127,7 +124,7 @@ function ChargeActions({ charge }: { charge: ChargeWithCategory }) {
     )
 }
 
-const installmentSorting: SortingFn<ChargeWithCategory> = (
+const installmentSorting: SortFn<ChargeTableFeatures, ChargeWithCategory> = (
     leftRow,
     rightRow,
     columnId,
@@ -152,7 +149,7 @@ const installmentSorting: SortingFn<ChargeWithCategory> = (
     const leftValue = leftRow.getValue<unknown>(columnId)
     const rightValue = rightRow.getValue<unknown>(columnId)
     if (leftValue instanceof Date && rightValue instanceof Date) {
-        return leftValue.getTime() - rightValue.getTime()
+        return Temporal.Instant.compare(instant(leftValue), instant(rightValue))
     }
     if (typeof leftValue === 'number' && typeof rightValue === 'number') {
         return leftValue - rightValue
@@ -164,7 +161,20 @@ const installmentSorting: SortingFn<ChargeWithCategory> = (
     )
 }
 
-const columns: ColumnDef<ChargeWithCategory>[] = [
+function ChargeStatus({ charge }: { charge: ChargeWithCategory }) {
+    const paid = charge.paid >= charge.amount
+    const partial = charge.paid > 0
+    const label = paid ? 'Paid' : partial ? 'Partially paid' : 'Pending'
+    const Icon = paid ? CircleCheckIcon : partial ? CircleDotIcon : CircleDashedIcon
+    return (
+        <span title={label} className={paid ? 'text-green-600 dark:text-green-400' : partial ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}>
+            <Icon className='size-4' aria-hidden='true' />
+            <span className='sr-only'>{label}</span>
+        </span>
+    )
+}
+
+const columns: ColumnDef<ChargeTableFeatures, ChargeWithCategory>[] = [
     // {
     //   id: "drag",
     //   header: () => null,
@@ -225,6 +235,7 @@ const columns: ColumnDef<ChargeWithCategory>[] = [
                     >
                         {charge.name}
                     </span>
+                    <ChargeStatus charge={charge} />
                     {isInstallmentParent ? (
                         <Badge variant='secondary'>Plan</Badge>
                     ) : null}
@@ -238,7 +249,7 @@ const columns: ColumnDef<ChargeWithCategory>[] = [
             )
         },
         enableHiding: false,
-        sortingFn: installmentSorting,
+        sortFn: installmentSorting,
     },
     {
         accessorKey: 'amount',
@@ -253,10 +264,15 @@ const columns: ColumnDef<ChargeWithCategory>[] = [
             }).format(amount / 100)
 
             return (
-                <div className='text-right font-medium pr-3'>{formatted}</div>
+                <div className='pr-3 text-right tabular-nums'>
+                    <div className='font-medium'>{formatted}</div>
+                    <div className='text-xs text-muted-foreground'>
+                        Paid {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(row.original.paid / 100)}
+                    </div>
+                </div>
             )
         },
-        sortingFn: installmentSorting,
+        sortFn: installmentSorting,
         // cell: ({ row }) => (
         //     <form
         //         onSubmit={(e) => {
@@ -296,7 +312,7 @@ const columns: ColumnDef<ChargeWithCategory>[] = [
                 {row.original.category?.name ?? 'Uncategorized'}
             </Badge>
         ),
-        sortingFn: installmentSorting,
+        sortFn: installmentSorting,
     },
     {
         accessorKey: 'scheduled_for',
@@ -304,19 +320,13 @@ const columns: ColumnDef<ChargeWithCategory>[] = [
             <DataTableColumnHeader column={column} title='Date' />
         ),
         cell: ({ row }) => {
-            const rawDate = row.getValue('scheduled_for')
-            const date =
-                rawDate instanceof Date ? rawDate : new Date(String(rawDate))
-            const formatted = new Intl.DateTimeFormat('es-MX', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric',
-                timeZone: 'UTC',
-            }).format(date)
+            const formatted = plainDate(row.original.scheduled_for).toLocaleString('es-MX', {
+                day: '2-digit', month: 'short', year: 'numeric',
+            })
 
             return <div className='whitespace-nowrap'>{formatted}</div>
         },
-        sortingFn: installmentSorting,
+        sortFn: installmentSorting,
     },
     // {
     //     accessorKey: 'type',
@@ -332,42 +342,6 @@ const columns: ColumnDef<ChargeWithCategory>[] = [
     //         </div>
     //     ),
     // },
-    {
-        accessorKey: 'status',
-        header: 'Status',
-        cell: ({ row }) => (
-            <Badge variant='outline' className='px-1.5 text-muted-foreground'>
-                {row.original.amount <= row.original.paid ? (
-                    <CircleCheckIcon className='fill-green-500 dark:fill-green-400' />
-                ) : (
-                    <LoaderIcon />
-                )}
-                {row.original.paid >= row.original.amount
-                    ? 'paided'
-                    : row.original.paid == 0
-                      ? 'pendient'
-                      : 'in progress'}
-            </Badge>
-        ),
-    },
-    {
-        id: 'paid',
-        accessorFn: (row) => row.paid,
-        header: ({ column }) => (
-            <DataTableColumnHeader left column={column} title='Paided' />
-        ),
-        cell: ({ row }) => {
-            const formatted = new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: 'USD',
-            }).format(row.original.paid / 100)
-
-            return (
-                <div className='text-right font-medium pr-3'>{formatted}</div>
-            )
-        },
-        sortingFn: installmentSorting,
-    },
     // {
     //     accessorKey: 'reviewer',
     //     header: 'Reviewer',
@@ -421,88 +395,11 @@ const columns: ColumnDef<ChargeWithCategory>[] = [
     },
 ]
 
-function daysInUtcMonth(year: number, monthIndex: number) {
-    return new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
-}
-
-function billingStartForMonth(year: number, monthIndex: number, closingDay: number) {
-    return new Date(
-        Date.UTC(
-            year,
-            monthIndex,
-            Math.min(closingDay, daysInUtcMonth(year, monthIndex)),
-        ),
-    )
-}
-
-function dateKey(date: Date) {
-    return date.toISOString().slice(0, 10)
-}
-
-function getBillingPeriodStart(date: Date, closingDay: number) {
-    const year = date.getUTCFullYear()
-    const month = date.getUTCMonth()
-    const currentStart = billingStartForMonth(year, month, closingDay)
-
-    if (date.getTime() >= currentStart.getTime()) {
-        return currentStart
-    }
-
-    return billingStartForMonth(year, month - 1, closingDay)
-}
-
-function getNextBillingPeriodStart(periodStart: Date, closingDay: number) {
-    return billingStartForMonth(
-        periodStart.getUTCFullYear(),
-        periodStart.getUTCMonth() + 1,
-        closingDay,
-    )
-}
-
-function formatBillingPeriodLabel(periodKey: string, closingDay: number) {
-    const start = new Date(`${periodKey}T00:00:00.000Z`)
-    const end = new Date(getNextBillingPeriodStart(start, closingDay))
-    end.setUTCDate(end.getUTCDate() - 1)
-
-    const formatter = new Intl.DateTimeFormat('es-MX', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        timeZone: 'UTC',
-    })
-
-    return `${formatter.format(start)} - ${formatter.format(end)}`
-}
-
-function getContinuousBillingPeriodKeys(
-    periodKeys: Set<string>,
-    closingDay: number,
-) {
-    const sortedKeys = Array.from(periodKeys).sort()
-    const firstKey = sortedKeys[0]
-    const lastKey = sortedKeys.at(-1)
-
-    if (!firstKey || !lastKey) return []
-
-    const keys: string[] = []
-    let periodStart = new Date(`${firstKey}T00:00:00.000Z`)
-    const lastStart = new Date(`${lastKey}T00:00:00.000Z`)
-
-    while (periodStart.getTime() <= lastStart.getTime()) {
-        keys.push(dateKey(periodStart))
-
-        const nextStart = getNextBillingPeriodStart(periodStart, closingDay)
-        if (nextStart.getTime() <= periodStart.getTime()) break
-
-        periodStart = nextStart
-    }
-
-    return keys
-}
-
 function isUnpaidCharge(charge: ChargeWithCategory) {
     return charge.paid < charge.amount
 }
+
+const EMPTY_CHARGES: ChargeWithCategory[] = []
 
 export function ChargesTable({
     cardId,
@@ -517,7 +414,7 @@ export function ChargesTable({
             data:
                 s.activeCardId === cardId && s.activeUserId === userId
                     ? s.charges
-                    : [],
+                    : EMPTY_CHARGES,
             card:
                 s.activeCardId === cardId && s.activeUserId === userId
                     ? s.card
@@ -527,16 +424,14 @@ export function ChargesTable({
         })),
     )
     const closingDay = card?.closing_day ?? 1
-    const currentBillingPeriod = dateKey(
-        getBillingPeriodStart(new Date(), closingDay),
-    )
+    const currentBillingPeriod = getBillingPeriodStart(Temporal.Now.plainDateISO(), closingDay).toString()
     const [periodMode, setPeriodMode] = useState<BillingPeriodMode>('month')
     const [selectedPeriod, setSelectedPeriod] = useState(currentBillingPeriod)
     const billingPeriods = useMemo<BillingPeriodOption[]>(() => {
         const periodKeys = new Set([currentBillingPeriod])
         for (const charge of data) {
             periodKeys.add(
-                dateKey(getBillingPeriodStart(charge.scheduled_for, closingDay)),
+                getBillingPeriodStart(charge.scheduled_for, closingDay).toString(),
             )
         }
 
@@ -557,9 +452,7 @@ export function ChargesTable({
             if (periodMode === 'unpaid') {
                 if (!isUnpaidCharge(charge)) continue
             } else {
-                const periodKey = dateKey(
-                    getBillingPeriodStart(charge.scheduled_for, closingDay),
-                )
+                const periodKey = getBillingPeriodStart(charge.scheduled_for, closingDay).toString()
                 if (periodKey !== selectedPeriod) continue
             }
 
@@ -624,25 +517,29 @@ export function ChargesTable({
     }, [filteredData])
     const rowCount = groupedData.length
     const [rowSelection, setRowSelection] = useState({})
-    const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
-        {},
-    )
+    const { columnVisibility, sorting, pageSize, setColumnVisibility, setSorting, setPageSize } = useTableSettings()
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-    const [sorting, setSorting] = useState<SortingState>([])
-    const [pagination, setPagination] = useState({
-        pageIndex: 0,
-        pageSize: 20,
-    })
+    const [pageIndex, setPageIndex] = useState(0)
+    const pagination = { pageIndex, pageSize }
+    useEffect(() => {
+        void useTableSettings.persist.rehydrate()
+    }, [])
     useEffect(() => {
         void fetch(cardId, userId)
     }, [cardId, fetch, userId])
-    useEffect(() => {
+    const billingContext = `${cardId}:${currentBillingPeriod}`
+    const [previousBillingContext, setPreviousBillingContext] = useState(billingContext)
+    if (previousBillingContext !== billingContext) {
+        setPreviousBillingContext(billingContext)
         setSelectedPeriod(currentBillingPeriod)
-    }, [cardId, currentBillingPeriod])
-    useEffect(() => {
-        setPagination((current) => ({ ...current, pageIndex: 0 }))
+    }
+    const periodContext = `${periodMode}:${selectedPeriod}`
+    const [previousPeriodContext, setPreviousPeriodContext] = useState(periodContext)
+    if (previousPeriodContext !== periodContext) {
+        setPreviousPeriodContext(periodContext)
+        setPageIndex(0)
         setRowSelection({})
-    }, [periodMode, selectedPeriod])
+    }
     useEffect(() => {
         let checking = false
 
@@ -691,8 +588,8 @@ export function ChargesTable({
         }
     }, [cardId, syncCard, userId])
 
-    // eslint-disable-next-line react-hooks/incompatible-library
-    const table = useReactTable({
+    const table = useTable({
+        features: chargeTableFeatures,
         data: groupedData,
         columns,
         rowCount,
@@ -710,15 +607,12 @@ export function ChargesTable({
         onSortingChange: setSorting,
         onColumnFiltersChange: setColumnFilters,
         onColumnVisibilityChange: setColumnVisibility,
-        onPaginationChange: setPagination,
-        getCoreRowModel: getCoreRowModel(),
+        onPaginationChange: (updater) => {
+            const next = typeof updater === 'function' ? updater(pagination) : updater
+            setPageIndex(next.pageIndex)
+            if (next.pageSize !== pageSize) setPageSize(next.pageSize)
+        },
         getSubRows: (row) => installmentsByParent.get(row.id),
-        getExpandedRowModel: getExpandedRowModel(),
-        getFilteredRowModel: getFilteredRowModel(),
-        getPaginationRowModel: getPaginationRowModel(),
-        getSortedRowModel: getSortedRowModel(),
-        getFacetedRowModel: getFacetedRowModel(),
-        getFacetedUniqueValues: getFacetedUniqueValues(),
         filterFromLeafRows: true,
         paginateExpandedRows: false,
     })

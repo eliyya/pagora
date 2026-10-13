@@ -1,3 +1,4 @@
+import { app } from '@/lib/routes'
 import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
@@ -6,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
         name: 'Pagora',
         short_name: 'Pagora',
         description: 'Administra tus tarjetas y registra cargos sin conexión.',
-        start_url: '/dashboard',
+        start_url: app.dashboard(),
         scope: '/',
         display: 'standalone',
         orientation: 'any',
