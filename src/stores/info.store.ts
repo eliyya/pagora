@@ -352,6 +352,10 @@ function deserializeCharge(charge: SerializedCharge): ChargeWithCategory {
     return {
         ...charge,
         kind,
+        subscription_id: charge.subscription_id ?? null,
+        subscription_due_on: charge.subscription_due_on
+            ? new Date(`${charge.subscription_due_on}T00:00:00.000Z`)
+            : null,
         installment_parent_id:
             kind === 'installment'
                 ? (charge.installment_parent_id ?? null)
@@ -377,6 +381,7 @@ function serializeCharge(charge: ChargeWithCategory): SerializedCharge {
     return {
         ...charge,
         scheduled_for: charge.scheduled_for.toISOString().slice(0, 10),
+        subscription_due_on: charge.subscription_due_on?.toISOString().slice(0, 10) ?? null,
         created_at: charge.created_at.toISOString(),
         updated_at: charge.updated_at.toISOString(),
         category: charge.category
@@ -698,6 +703,8 @@ function materializePendingMutations(
                 amount: mutation.charge.amount,
                 paid: current?.paid ?? 0,
                 kind: 'single',
+                subscription_id: current?.subscription_id ?? null,
+                subscription_due_on: current?.subscription_due_on ?? null,
                 installment_parent_id: null,
                 installment_number: null,
                 installment_count: null,
@@ -778,6 +785,8 @@ function materializePendingMutations(
                 amount: plan.amount,
                 paid: currentParent?.paid ?? 0,
                 kind: 'installment_parent',
+                subscription_id: null,
+                subscription_due_on: null,
                 installment_parent_id: null,
                 installment_number: null,
                 installment_count: plan.count,
@@ -802,6 +811,8 @@ function materializePendingMutations(
                     amount: installment.amount,
                     paid: current?.paid ?? 0,
                     kind: 'installment',
+                    subscription_id: null,
+                    subscription_due_on: null,
                     installment_parent_id: plan.id,
                     installment_number:
                         installment.installmentNumber,

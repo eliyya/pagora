@@ -29,6 +29,8 @@ export type SerializedCharge = {
     installment_parent_id: string | null
     installment_number: number | null
     installment_count: number | null
+    subscription_id?: string | null
+    subscription_due_on?: string | null
     scheduled_for: string
     amount: number
     paid: number

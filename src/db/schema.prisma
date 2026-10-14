@@ -18,6 +18,42 @@ enum ChargeKind {
   installment
 }
 
+enum SubscriptionStatus {
+  active
+  paused
+  canceled
+}
+
+/// Monthly recurrence rule. Charges are created only when their occurrence is due.
+model Subscription {
+  id          String             @id @default(dbgenerated("snowflake()"))
+  name        String
+  card_id     String
+  category_id String?
+  /// Amount per occurrence in cents; copied into each generated charge.
+  amount      Int
+  status      SubscriptionStatus @default(active)
+  /// Original monthly anchor. Constrain its day in short months without changing the anchor.
+  starts_on   DateTime           @db.Date
+  /// Next unprocessed occurrence, retained while paused or canceled.
+  next_due_on DateTime           @db.Date
+  /// IANA time zone used to determine whether a calendar date is due.
+  time_zone   String             @default("America/Mexico_City")
+  revision    Int                @default(0)
+  created_at  DateTime           @default(now())
+  updated_at  DateTime           @updatedAt
+
+  card     Card            @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  category ChargeCategory? @relation(fields: [category_id], references: [id], onDelete: SetNull)
+  charges  Charge[]
+
+  @@unique([id, card_id])
+  @@index([card_id, status])
+  @@index([status, next_due_on])
+  @@index([category_id])
+  @@map("subscriptions")
+}
+
 model Charge {
   id                    String     @id @default(dbgenerated("snowflake()"))
   name                  String
@@ -27,6 +63,10 @@ model Charge {
   installment_parent_id String?
   installment_number    Int?
   installment_count     Int?
+  /// Generated subscription charges use kind = single.
+  subscription_id       String?
+  /// Original occurrence identity; do not change when editing scheduled_for.
+  subscription_due_on   DateTime?  @db.Date
   /// at int like 13.99 => 1399
   amount                Int
   /// at int like 13.99 => 1399
@@ -41,9 +81,11 @@ model Charge {
   installment_parent Charge?         @relation("ChargeInstallments", fields: [installment_parent_id, card_id], references: [id, card_id], onDelete: Cascade)
   installments       Charge[]        @relation("ChargeInstallments")
   payment_logs       PaymentLog[]
+  subscription       Subscription?   @relation(fields: [subscription_id, card_id], references: [id, card_id], onDelete: NoAction)
 
   @@unique([id, card_id])
   @@unique([installment_parent_id, installment_number])
+  @@unique([subscription_id, subscription_due_on])
   @@index([category_id])
   @@index([installment_parent_id])
   @@index([card_id, kind, scheduled_for])
@@ -59,8 +101,9 @@ model ChargeCategory {
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
-  card    Card     @relation(fields: [card_id], references: [id], onDelete: Cascade)
-  charges Charge[]
+  card          Card           @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  charges       Charge[]
+  subscriptions Subscription[]
 
   @@unique([card_id, name])
   @@index([card_id])
@@ -86,13 +129,14 @@ model Card {
   updated_at   DateTime   @default(now()) @updatedAt
   sync_version Int        @default(0)
 
-  owner       User              @relation(fields: [owner_id], references: [id], onDelete: Cascade)
-  charges     Charge[]
-  categories  ChargeCategory[]
-  changes     CardChange[]
-  mutations   AppliedMutation[]
-  members     CardMember[]
-  invitations CardInvitation[]
+  owner         User              @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  charges       Charge[]
+  categories    ChargeCategory[]
+  changes       CardChange[]
+  mutations     AppliedMutation[]
+  members       CardMember[]
+  invitations   CardInvitation[]
+  subscriptions Subscription[]
 
   @@unique([owner_id, name])
   @@map("cards")
