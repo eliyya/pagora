@@ -11,14 +11,13 @@ const githubBuildId = [
     .join('-')
 
 const pwaBuildId =
-    process.env.VERCEL_DEPLOYMENT_ID?.trim() ||
-    githubBuildId ||
-    randomUUID()
+    process.env.VERCEL_DEPLOYMENT_ID?.trim() || githubBuildId || randomUUID()
 
 const nextConfig: NextConfig = {
-    deploymentId: process.env.NODE_ENV === 'development'
-        ? 'pagora-dev-payment-type-1'
-        : pwaBuildId,
+    deploymentId:
+        process.env.NODE_ENV === 'development'
+            ? 'pagora-dev-payment-type-1'
+            : pwaBuildId,
     allowedDevOrigins: ['dev.eliyya.dev'],
     env: {
         PWA_BUILD_ID: pwaBuildId,

@@ -13,7 +13,11 @@ import { Button } from '@/components/ui/button'
 import { Field, FieldError, FieldGroup } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { FormEvent, useState } from 'react'
+import { FormEvent, useRef, useState } from 'react'
+import { Temporal } from 'temporal-polyfill'
+import { toast } from 'sonner'
+import { createSubscriptionAction } from '@/actions/subscription.action'
+import { isSubscriptionTimeZone } from '@/schemas/subscription'
 import { useCreateDialogState } from '@/stores/charges.store'
 import { useShallow } from 'zustand/shallow'
 import { useInfo } from '@/stores/info.store'
@@ -37,7 +41,12 @@ export function CreateChargeDialog() {
     const [name, setName] = useState('')
     const [amountCents, setAmountCents] = useState(0)
     const [categoryName, setCategoryName] = useState('')
-    const [installmentsEnabled, setInstallmentsEnabled] = useState(false)
+    const [paymentType, setPaymentType] = useState('single')
+    const installmentsEnabled = paymentType === 'deferred'
+    const subscriptionEnabled = paymentType === 'subscription'
+    const [startsOn, setStartsOn] = useState('')
+    const [timeZone, setTimeZone] = useState('America/Mexico_City')
+    const subscriptionId = useRef<string | null>(null)
     const [installmentCount, setInstallmentCount] = useState(2)
     const [firstInstallmentDate, setFirstInstallmentDate] = useState('')
     const [errors, setErrors] = useState<{
@@ -45,6 +54,9 @@ export function CreateChargeDialog() {
         amount?: string
         installmentCount?: string
         firstInstallmentDate?: string
+        startsOn?: string
+        timeZone?: string
+        submit?: string
     }>({})
     const [saving, setSaving] = useState(false)
 
@@ -52,13 +64,17 @@ export function CreateChargeDialog() {
         setName('')
         setAmountCents(0)
         setCategoryName('')
-        setInstallmentsEnabled(false)
+        setPaymentType('single')
+        setStartsOn('')
+        setTimeZone('America/Mexico_City')
+        subscriptionId.current = null
         setInstallmentCount(2)
         setFirstInstallmentDate('')
         setErrors({})
     }
 
     function handleOpenChange(nextOpen: boolean) {
+        if (saving) return
         if (!nextOpen) resetForm()
         toggle(nextOpen)
     }
@@ -70,7 +86,13 @@ export function CreateChargeDialog() {
 
         const newErrors: typeof errors = {}
         if (!trimmedName) newErrors.name = 'Name is required'
-        if (amountCents <= 0) newErrors.amount = 'Invalid amount'
+        if (!Number.isSafeInteger(amountCents) || amountCents <= 0 || amountCents > 2_147_483_647) newErrors.amount = 'Invalid amount'
+        if (subscriptionEnabled && !isDateOnly(startsOn)) {
+            newErrors.startsOn = 'Elige la fecha del primer cargo'
+        }
+        if (subscriptionEnabled && !isSubscriptionTimeZone(timeZone.trim())) {
+            newErrors.timeZone = 'Escribe una zona horaria válida, por ejemplo America/Mexico_City'
+        }
         if (
             installmentsEnabled &&
             (!Number.isInteger(installmentCount) ||
@@ -100,6 +122,32 @@ export function CreateChargeDialog() {
 
         setSaving(true)
         try {
+            if (subscriptionEnabled) {
+                const { activeCardId, activeUserId, syncCard } = useInfo.getState()
+                if (!activeCardId) {
+                    setErrors({ submit: 'Selecciona una tarjeta para continuar.' })
+                    return
+                }
+                subscriptionId.current ??= crypto.randomUUID()
+                const result = await createSubscriptionAction({
+                    id: subscriptionId.current,
+                    cardId: activeCardId,
+                    name: trimmedName,
+                    amount: amountCents,
+                    categoryName,
+                    startsOn,
+                    timeZone,
+                })
+                if ('error' in result) {
+                    setErrors({ submit: result.error })
+                    return
+                }
+                toast.success('Suscripción guardada')
+                resetForm()
+                toggle(false)
+                if (activeUserId) void syncCard(activeCardId, activeUserId)
+                return
+            }
             const saved = await createCharge(
                 amountCents,
                 trimmedName,
@@ -111,7 +159,12 @@ export function CreateChargeDialog() {
                       }
                     : undefined,
             )
-            if (saved) handleOpenChange(false)
+            if (saved) {
+                resetForm()
+                toggle(false)
+            }
+        } catch {
+            setErrors({ submit: 'No se pudo guardar. Revisa tu conexión e inténtalo de nuevo.' })
         } finally {
             setSaving(false)
         }
@@ -122,9 +175,9 @@ export function CreateChargeDialog() {
             <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-sm'>
                 <form onSubmit={handleSubmit} className='flex flex-col gap-6'>
                     <DialogHeader>
-                        <DialogTitle>New Charge</DialogTitle>
+                        <DialogTitle>{subscriptionEnabled ? 'Nueva suscripción' : 'New Charge'}</DialogTitle>
                         <DialogDescription>
-                            Create a new chargue into the credit card.
+                            {subscriptionEnabled ? 'Configura un cargo mensual recurrente para esta tarjeta.' : 'Create a new chargue into the credit card.'}
                         </DialogDescription>
                     </DialogHeader>
                     <FieldGroup>
@@ -144,7 +197,7 @@ export function CreateChargeDialog() {
                             )}
                         </Field>
                         <Field>
-                            <Label htmlFor='username-1'>Amount</Label>
+                            <Label htmlFor='username-1'>{subscriptionEnabled ? 'Importe mensual' : 'Amount'}</Label>
                             <CurrencyInput
                                 id='username-1'
                                 name='amount'
@@ -183,11 +236,18 @@ export function CreateChargeDialog() {
                                 aria-labelledby='payment-type-label'
                                 multiple={false}
                                 spacing={1}
-                                value={[installmentsEnabled ? 'deferred' : 'single']}
+                                value={[paymentType]}
                                 disabled={saving}
                                 onValueChange={(values) => {
                                     if (!values.length) return
-                                    setInstallmentsEnabled(values[0] === 'deferred')
+                                    if (values[0] === 'subscription' && !startsOn) {
+                                        const zone = isSubscriptionTimeZone(timeZone.trim())
+                                            ? timeZone.trim()
+                                            : 'America/Mexico_City'
+                                        setStartsOn(Temporal.Now.plainDateISO(zone).toString())
+                                    }
+                                    setPaymentType(values[0])
+                                    setErrors({})
                                 }}
                                 className='w-full rounded-lg bg-muted p-1'
                             >
@@ -204,6 +264,13 @@ export function CreateChargeDialog() {
                                     className='flex-1 rounded-md aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-sm'
                                 >
                                     Diferido
+                                </ToggleGroupItem>
+                                <ToggleGroupItem
+                                    type='button'
+                                    value='subscription'
+                                    className='flex-1 rounded-md aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-sm'
+                                >
+                                    Suscripción
                                 </ToggleGroupItem>
                             </ToggleGroup>
                         </Field>
@@ -256,6 +323,33 @@ export function CreateChargeDialog() {
                                 </Field>
                             </div>
                         ) : null}
+                        {subscriptionEnabled && (
+                            <div className='flex flex-col gap-3'>
+                                <p className='text-sm text-muted-foreground'>
+                                    Frecuencia mensual, sin fecha de término. El importe corresponde a cada cargo.
+                                </p>
+                                <Field>
+                                    <Label htmlFor='subscription-start'>Primer cargo</Label>
+                                    <Input id='subscription-start' name='subscription-start' type='date'
+                                        value={startsOn} disabled={saving}
+                                        aria-invalid={!!errors.startsOn}
+                                        onChange={(event) => setStartsOn(event.target.value)} />
+                                    {errors.startsOn && <FieldError>{errors.startsOn}</FieldError>}
+                                    <p className='text-xs text-muted-foreground'>
+                                        Se repetirá el mismo día de cada mes. Si ese día no existe, se usará el último día del mes.
+                                    </p>
+                                </Field>
+                                <Field>
+                                    <Label htmlFor='subscription-zone'>Zona horaria</Label>
+                                    <Input id='subscription-zone' name='subscription-zone'
+                                        value={timeZone} maxLength={100} disabled={saving}
+                                        placeholder='America/Mexico_City' aria-invalid={!!errors.timeZone}
+                                        onChange={(event) => setTimeZone(event.target.value)} />
+                                    {errors.timeZone && <FieldError>{errors.timeZone}</FieldError>}
+                                </Field>
+                            </div>
+                        )}
+                        {errors.submit && <FieldError role='alert'>{errors.submit}</FieldError>}
                     </FieldGroup>
                     <DialogFooter>
                         <DialogClose
@@ -266,7 +360,7 @@ export function CreateChargeDialog() {
                             }
                         />
                         <Button type='submit' disabled={saving}>
-                            {saving ? 'Saving locally…' : 'Save changes'}
+                            {saving ? 'Guardando…' : subscriptionEnabled ? 'Guardar suscripción' : 'Save changes'}
                         </Button>
                     </DialogFooter>
                 </form>
