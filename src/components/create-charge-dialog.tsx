@@ -145,7 +145,7 @@ export function CreateChargeDialog() {
                 toast.success('Suscripción guardada')
                 resetForm()
                 toggle(false)
-                if (activeUserId) void syncCard(activeCardId, activeUserId)
+                if (activeUserId) void syncCard(activeCardId, activeUserId).catch(() => {})
                 return
             }
             const saved = await createCharge(

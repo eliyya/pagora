@@ -53,7 +53,13 @@ function CardSubscriptions({ cardId }: { cardId: string }) {
         setActionError('')
         try {
             const result = await manageSubscriptionAction(input)
-            if (result.error) { setActionError(result.error); return }
+            if (result.error) {
+                setActionError(result.error)
+                setRefresh((value) => value + 1)
+                const { activeUserId, syncCard } = useInfo.getState()
+                if (activeUserId) void syncCard(cardId, activeUserId).catch(() => {})
+                return
+            }
             setEditing(null)
             setCanceling(null)
             const updated = await listSubscriptionsAction(cardId)

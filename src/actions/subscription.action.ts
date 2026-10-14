@@ -10,6 +10,7 @@ import { ManageSubscriptionSchema, type ManageSubscriptionInput } from '@/schema
 import { canReadCard } from '@/lib/card-access'
 import { Temporal } from 'temporal-polyfill'
 import { resumedSubscriptionDate } from '@/lib/subscriptions'
+import { generateDueSubscriptionCharges } from '@/lib/subscription-charges'
 
 export async function createSubscriptionAction(input: CreateSubscriptionInput) {
     const user = await getCurrentUserAction()
@@ -27,6 +28,9 @@ export async function createSubscriptionAction(input: CreateSubscriptionInput) {
         // A stable client ID makes retries safe after a lost response.
         const existing = await tx.subscription.findUnique({ where: { id: data.id } })
         if (existing) {
+            if (existing.card_id === data.cardId) {
+                await generateDueSubscriptionCharges(tx, data.cardId, existing.id, revision)
+            }
             return existing.card_id === data.cardId
                 ? { data: { id: existing.id } }
                 : { error: 'No se pudo guardar la suscripción.' }
@@ -56,6 +60,7 @@ export async function createSubscriptionAction(input: CreateSubscriptionInput) {
                 entity: 'category', entityId: category.id, operation: 'upsert',
             }], tx)
         }
+        await generateDueSubscriptionCharges(tx, data.cardId, subscription.id, revision)
         return { data: { id: subscription.id } }
     })
 }
@@ -92,6 +97,12 @@ export async function manageSubscriptionAction(input: ManageSubscriptionInput) {
         if (!current) return { error: 'La suscripción ya no existe.' }
         if (current.revision !== data.revision) return { error: 'La suscripción cambió. Actualiza la lista e inténtalo de nuevo.' }
         if (current.status === 'canceled') return { error: 'Esta suscripción está cancelada.' }
+        if (data.operation === 'pause' && current.status !== 'active') return { error: 'Solo puedes pausar una suscripción activa.' }
+        if (data.operation === 'resume' && current.status !== 'paused') return { error: 'Solo puedes reanudar una suscripción pausada.' }
+        const now = Temporal.Now.instant()
+        // Settle elapsed occurrences using the old price before changing the rule.
+        const generated = await generateDueSubscriptionCharges(tx, data.cardId, current.id, revision, now)
+        if (generated.hasMore) return { error: 'Se recuperaron cargos pendientes. Actualiza la lista y repite la operación para terminar de recuperarlos.' }
         if (data.operation === 'edit') {
             const category = data.categoryName ? await tx.chargeCategory.upsert({
                 where: { card_id_name: { card_id: data.cardId, name: data.categoryName } },
@@ -102,17 +113,18 @@ export async function manageSubscriptionAction(input: ManageSubscriptionInput) {
             } })
             if (category) await recordCardChanges(data.cardId, revision, [{ entity: 'category', entityId: category.id, operation: 'upsert' }], tx)
         } else {
-            if (data.operation === 'pause' && current.status !== 'active') return { error: 'Solo puedes pausar una suscripción activa.' }
-            if (data.operation === 'resume' && current.status !== 'paused') return { error: 'Solo puedes reanudar una suscripción pausada.' }
             await tx.subscription.update({ where: { id: current.id }, data: {
                 status: data.operation === 'pause' ? 'paused' : data.operation === 'cancel' ? 'canceled' : 'active',
                 revision,
                 ...(data.operation === 'resume' ? { next_due_on: dateOnlyToUtc(resumedSubscriptionDate(
                     current.starts_on.toISOString().slice(0, 10),
                     current.next_due_on.toISOString().slice(0, 10),
-                    Temporal.Now.plainDateISO(current.time_zone).toString(),
+                    now.toZonedDateTimeISO(current.time_zone).toPlainDate().toString(),
                 )) } : {}),
             } })
+            if (data.operation === 'resume') {
+                await generateDueSubscriptionCharges(tx, data.cardId, current.id, revision, now)
+            }
         }
         return { data: { id: current.id } }
     })

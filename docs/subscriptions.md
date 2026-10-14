@@ -27,9 +27,9 @@ La base impide eliminar una suscripción que todavía tenga cargos asociados.
 Eliminar la tarjeta elimina tanto sus cargos como sus suscripciones. Eliminar
 una categoría deja su referencia en `null`, siguiendo la convención existente.
 
-## Contrato para la siguiente etapa
+## Generación y sincronización
 
-El generador deberá crear cada cargo vencido, avanzar `next_due_on` y registrar
+El generador crea cada cargo vencido, avanza `next_due_on` y registra
 los cambios de sincronización dentro de una transacción con control de
 concurrencia. No se deben generar ocurrencias posteriores al día actual de la
 zona configurada. Los reintentos deben recuperar fechas pendientes y respetar
@@ -42,5 +42,15 @@ anteriores. Validar que la categoría pertenezca a la tarjeta, como en los cargo
 No retroceder el cursor al borrar un cargo generado: la restricción única cubre
 cargos existentes, mientras que el cursor evita regenerar ocurrencias eliminadas.
 
-Esta etapa incluye únicamente el esquema y la migración. La automatización,
-mutaciones, sincronización e interfaz se implementarán por separado.
+`generateSubscriptionCharges` es la entrada interna para el futuro cron. Cada
+lote procesa hasta 100 suscripciones y cada transacción hasta 120 mensualidades.
+El resultado devuelve `nextCursor` para continuar la página, `pending` para las
+suscripciones con más fechas pendientes y `errors` para reintentar las fallidas.
+Tras completar las páginas, una nueva pasada desde el inicio recupera pendientes.
+El cron y su endpoint todavía no están configurados.
+
+La creación genera inmediatamente las ocurrencias vencidas, incluida la de hoy.
+Si el inicio está en el futuro no genera cargos. Reanudar también genera el cargo
+del día si corresponde. El bloqueo de la tarjeta serializa las operaciones; el
+índice único protege cada ocurrencia. Cargos, cursor y registro de sincronización
+se guardan juntos o se revierten juntos. Los cargos quedan pendientes de pago.
