@@ -161,7 +161,7 @@ interface InfoStore {
     acceptServerConflict(mutationId: string): Promise<void>
     retryConflict(mutationId: string): Promise<void>
     paidCharge(id: string): Promise<void>
-    batchPayCharges(amount: number): Promise<BatchPaymentOutcome | null>
+    batchPayCharges(amount: number, selectedChargeIds?: string[]): Promise<BatchPaymentOutcome | null>
     createCategory(name: string, monthlyBudget: number): Promise<void>
     updateCategory(
         id: string,
@@ -233,6 +233,7 @@ function localDateOnly() {
 }
 
 type PendingBatchPayment = {
+    selectedChargeIds?: string[]
     requestId: string
     amount: number
     asOfDate: string
@@ -248,6 +249,7 @@ function getOrCreateBatchPaymentRequest(
     userId: string,
     cardId: string,
     amount: number,
+    selectedChargeIds?: string[],
 ): PendingBatchPayment {
     const asOfDate = localDateOnly()
     const key = batchPaymentStorageKey(userId, cardId)
@@ -264,6 +266,7 @@ function getOrCreateBatchPaymentRequest(
                 isDateOnly(parsed.asOfDate)
             ) {
                 const request = {
+                    selectedChargeIds: parsed.selectedChargeIds,
                     requestId: parsed.requestId,
                     amount: parsed.amount as number,
                     asOfDate: parsed.asOfDate,
@@ -285,6 +288,7 @@ function getOrCreateBatchPaymentRequest(
 
     const request = {
         requestId: crypto.randomUUID(),
+        selectedChargeIds,
         amount,
         asOfDate,
     }
@@ -711,7 +715,8 @@ function materializePendingMutations(
                 scheduled_for:
                     current?.scheduled_for ??
                     runtimeDateFromDateOnly(
-                        occurredDateOnly(mutation.occurredAt),
+                        mutation.scheduledFor ??
+                            occurredDateOnly(mutation.occurredAt),
                     ),
                 category_id: category?.id ?? null,
                 category,
@@ -1805,6 +1810,9 @@ export const useInfo = create<InfoStore>((set, get) => ({
                           mutationId,
                           type: 'charge.create',
                           occurredAt,
+                          scheduledFor: Temporal.Now.plainDateISO(
+                              Temporal.Now.timeZoneId(),
+                          ).toString(),
                           charge: {
                               id: chargeId,
                               name: trimmedName,
@@ -2412,7 +2420,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
         syncAfterMutation(userId, cardId)
     },
 
-    batchPayCharges: async (amount) => {
+    batchPayCharges: async (amount, selectedChargeIds) => {
         const state = get()
         if (state.cardAccess !== 'owner' && state.cardAccess !== 'write') {
             return null
@@ -2460,8 +2468,10 @@ export const useInfo = create<InfoStore>((set, get) => ({
                     userId,
                     cardId,
                     amount,
+                    selectedChargeIds,
                 )
                 const recoveredPreviousRequest =
+                    JSON.stringify(request.selectedChargeIds) !== JSON.stringify(selectedChargeIds) ||
                     request.amount !== amount ||
                     request.asOfDate !== localDateOnly()
                 const result = await batchPayChargesAction(
@@ -2469,6 +2479,7 @@ export const useInfo = create<InfoStore>((set, get) => ({
                     request.amount,
                     request.requestId,
                     request.asOfDate,
+                    request.selectedChargeIds,
                 ).catch(() => null)
                 if (!result || !('data' in result) || !result.data) {
                     if (result) {

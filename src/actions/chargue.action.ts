@@ -136,6 +136,7 @@ export async function batchPayChargesAction(
     amount: number,
     requestId: string,
     asOfDate: string,
+    selectedChargeIds?: string[],
 ) {
     const user = await getCurrentUserAction()
     if (!user) {
@@ -148,7 +149,11 @@ export async function batchPayChargesAction(
         typeof requestId !== 'string' ||
         requestId.length === 0 ||
         requestId.length > 440 ||
-        !isDateOnly(asOfDate)
+        !isDateOnly(asOfDate) ||
+        (selectedChargeIds !== undefined && (!Array.isArray(selectedChargeIds) ||
+            selectedChargeIds.length === 0 ||
+            !selectedChargeIds.every((id) => typeof id === 'string' && id.length > 0) ||
+            new Set(selectedChargeIds).size !== selectedChargeIds.length))
     ) {
         return { error: 'validation error' as const }
     }
@@ -159,6 +164,7 @@ export async function batchPayChargesAction(
     }
     const result = await payCardAmount(card_id, amount, {
         asOfDate,
+        selectedChargeIds,
         idempotency: {
             requestId,
             userId: user.id,
@@ -166,6 +172,9 @@ export async function batchPayChargesAction(
     })
     if (result.status === 'not-found') {
         return { error: 'not found' as const }
+    }
+    if (result.status === 'invalid-selection') {
+        return { error: 'Los saldos cambiaron o la selección no cubre el monto. Revisa los cargos.' as const }
     }
     if (result.status === 'idempotency-conflict') {
         return { error: 'idempotency conflict' as const }

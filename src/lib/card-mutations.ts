@@ -104,6 +104,7 @@ const clientMutationSchema = z.discriminatedUnion('type', [
         .object({
             ...mutationBaseSchema,
             type: z.literal('charge.create'),
+            scheduledFor: z.string().refine(isDateOnly).optional(),
             charge: z
                 .object({
                     id: idSchema,
@@ -433,7 +434,9 @@ async function createCharge(
             category_id: category.category?.id ?? null,
             kind: 'single',
             revision: cursor,
-            scheduled_for: new Date(mutation.occurredAt),
+            scheduled_for: mutation.scheduledFor
+                ? dateOnlyToUtc(mutation.scheduledFor)
+                : new Date(mutation.occurredAt),
             created_at: new Date(mutation.occurredAt),
         },
         include: { category: true },

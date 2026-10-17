@@ -41,6 +41,7 @@ type BatchPaymentIdempotency = {
 
 type PayCardAmountOptions = {
     asOfDate?: string
+    selectedChargeIds?: string[]
     idempotency?: BatchPaymentIdempotency
 }
 
@@ -73,9 +74,9 @@ function todayUtcDateOnly() {
     return Temporal.Now.plainDateISO('UTC').toString()
 }
 
-function paymentRequestHash(requestedAmount: number, asOfDate: string) {
+function paymentRequestHash(requestedAmount: number, asOfDate: string, selectedChargeIds?: string[]) {
     return createHash('sha256')
-        .update(`payment.batch:${requestedAmount}:${asOfDate}`)
+        .update(`payment.batch:${requestedAmount}:${asOfDate}${selectedChargeIds ? `:${JSON.stringify([...selectedChargeIds].sort())}` : ''}`)
         .digest('hex')
 }
 
@@ -290,7 +291,7 @@ export async function payCardAmount(
             ? `payment.batch:${idempotency.requestId}`
             : null
         const requestHash = idempotency
-            ? paymentRequestHash(requestedAmount, asOfDate)
+            ? paymentRequestHash(requestedAmount, asOfDate, options.selectedChargeIds)
             : null
         if (idempotency && mutationId && requestHash) {
             const existing = await tx.appliedMutation.findUnique({
@@ -338,7 +339,9 @@ export async function payCardAmount(
             where: {
                 card_id: cardId,
                 kind: { not: 'installment_parent' },
-                scheduled_for: { lte: dateOnlyToUtc(asOfDate) },
+                ...(options.selectedChargeIds
+                    ? { id: { in: options.selectedChargeIds } }
+                    : { scheduled_for: { lte: dateOnlyToUtc(asOfDate) } }),
             },
             include: { category: true },
             orderBy: [
@@ -360,6 +363,16 @@ export async function payCardAmount(
             const amount = Math.min(owed, remaining)
             remaining -= amount
             allocations.push({ charge, amount })
+        }
+
+        if (options.selectedChargeIds && (remaining > 0 ||
+            charges.filter((charge) => charge.amount > charge.paid).length !== options.selectedChargeIds.length)) {
+            return {
+                status: 'invalid-selection' as const,
+                updatedCharges: [] as ChargeWithCategory[],
+                payments: [] as AppliedChargePayment[],
+                remaining: requestedAmount,
+            }
         }
 
         if (allocations.length === 0) {
