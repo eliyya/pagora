@@ -55,6 +55,10 @@ function CardSubscriptions({ cardId }: { cardId: string }) {
             const result = await manageSubscriptionAction(input)
             if (result.error) {
                 setActionError(result.error)
+                // Discard stale revisions and require a fresh selection after reload.
+                setEditing(null)
+                setCanceling(null)
+                setRows(null)
                 setRefresh((value) => value + 1)
                 const { activeUserId, syncCard } = useInfo.getState()
                 if (activeUserId) void syncCard(cardId, activeUserId).catch(() => {})
@@ -69,6 +73,10 @@ function CardSubscriptions({ cardId }: { cardId: string }) {
             if (activeUserId) void syncCard(cardId, activeUserId).catch(() => {})
         } catch {
             setActionError('No se pudo completar la operación. Actualiza la lista antes de reintentar.')
+            setEditing(null)
+            setCanceling(null)
+            setRows(null)
+            setRefresh((value) => value + 1)
         } finally { setBusy(false) }
     }
 
