@@ -47,6 +47,8 @@ export function serializeCharge(
         installment_parent_id: charge.installment_parent_id,
         installment_number: charge.installment_number,
         installment_count: charge.installment_count,
+        subscription_id: charge.subscription_id,
+        subscription_due_on: charge.subscription_due_on?.toISOString().slice(0, 10) ?? null,
         amount: charge.amount,
         paid: charge.paid,
         revision: charge.revision,

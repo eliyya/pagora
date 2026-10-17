@@ -40,6 +40,7 @@ import { useInfo } from '@/stores/info.store'
 import { ShareCardDialog } from './share-card-dialog'
 import { BudgetCategoriesPanel } from './budget-categories-panel'
 import { CardSyncStatus } from './card-sync-status'
+import { SubscriptionsPanel } from './subscriptions-panel'
 import type { BillingPeriodMode, BillingPeriodOption } from './data-table'
 
 export function DashboardTabs({
@@ -103,6 +104,7 @@ export function DashboardTabs({
                             { label: 'Budgets', value: 'budgets' },
                             { label: 'Graph', value: 'graph' },
                             { label: 'Agents', value: 'agents' },
+                            { label: 'Suscripciones', value: 'subscriptions' },
                         ]}
                     >
                         <SelectTrigger
@@ -123,8 +125,8 @@ export function DashboardTabs({
                                 >
                                     Agents
                                 </SelectItem>
-                                <SelectItem value='focus-documents'>
-                                    Focus Documents
+                                <SelectItem value='subscriptions'>
+                                    Suscripciones
                                 </SelectItem>
                             </SelectGroup>
                         </SelectContent>
@@ -203,8 +205,8 @@ export function DashboardTabs({
                         >
                             Agents
                         </TabsTrigger>
-                        <TabsTrigger value='focus-documents'>
-                            Focus Documents
+                        <TabsTrigger value='subscriptions'>
+                            Suscripciones
                         </TabsTrigger>
                     </TabsList>
                     <div className='flex items-center gap-2'>
@@ -302,10 +304,10 @@ export function DashboardTabs({
                     <AgentTokensPanel />
                 </TabsContent>
                 <TabsContent
-                    value='focus-documents'
+                    value='subscriptions'
                     className='flex flex-col px-4 lg:px-6'
                 >
-                    <div className='aspect-video w-full flex-1 rounded-lg border border-dashed'></div>
+                    {tab === 'subscriptions' && <SubscriptionsPanel />}
                 </TabsContent>
             </Tabs>
             <PayChargesDialog open={payOpen} onOpenChange={setPayOpen} />

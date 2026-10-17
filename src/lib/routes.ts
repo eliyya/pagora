@@ -1,5 +1,5 @@
-// @type-routes-hash: 8b80e3496aa86ea69072cb7b0c6eafe04fcee49582016ab3c53899887191128b
-// @type-routes-input-hash: 9f488a93df1bd72a5593d54f4f28f7e21399f8c3366c4c657ac8f917ddb80d3d
+// @type-routes-hash: 34a52786d63051f8e942be15f7fc3ebb29bccb4e606e8d8044d9ee1d678473fa
+// @type-routes-input-hash: 6bfd8f2eae44864fee7dc5bfd747f3dbb5b5eb8054607a03dfb95d58bd23879c
 interface App {
         '.well-known': {
             'oauth-protected-resource': {
@@ -26,6 +26,11 @@ interface App {
                     sync: {
                         <$card_id extends string>($card_id: $card_id): `/api/cards/${$card_id}/sync`
                     }
+                }
+            }
+            cron: {
+                subscriptions: {
+                    (): `/api/cron/subscriptions`
                 }
             }
             mcp: {
@@ -82,6 +87,9 @@ export const app = Object.assign(
                 $card_id: {
                     sync: ($card_id: string) => `/api/cards/${$card_id}/sync`
                 }
+            },
+            cron: {
+                subscriptions: () => `/api/cron/subscriptions`
             },
             mcp: Object.assign(
                 () => `/api/mcp`,

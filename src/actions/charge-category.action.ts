@@ -99,6 +99,10 @@ export async function updateChargeCategoryAction(
         ]
         let affectedChargeIds: string[] = []
         if (current.name !== result.name) {
+            await tx.subscription.updateMany({
+                where: { category_id: id },
+                data: { revision: syncVersion },
+            })
             const affectedCharges = await tx.charge.findMany({
                 where: { category_id: id },
                 select: { id: true },
@@ -161,6 +165,10 @@ export async function deleteChargeCategoryAction(id: string) {
                 category_id: null,
                 revision: syncVersion,
             },
+        })
+        await tx.subscription.updateMany({
+            where: { category_id: id },
+            data: { category_id: null, revision: syncVersion },
         })
         await tx.chargeCategory.delete({ where: { id } })
         await recordCardChanges(
