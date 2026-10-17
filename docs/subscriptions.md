@@ -47,7 +47,21 @@ lote procesa hasta 100 suscripciones y cada transacción hasta 120 mensualidades
 El resultado devuelve `nextCursor` para continuar la página, `pending` para las
 suscripciones con más fechas pendientes y `errors` para reintentar las fallidas.
 Tras completar las páginas, una nueva pasada desde el inicio recupera pendientes.
-El cron y su endpoint todavía no están configurados.
+El endpoint `GET /api/cron/subscriptions` procesa las páginas y vuelve a recorrer
+los pendientes dentro de un presupuesto de 240 segundos (función de 300 segundos).
+Devuelve 503 si quedan errores o se agota el tiempo; los cargos confirmados se
+conservan y otra ejecución recupera lo restante. Vercel no reintenta automáticamente
+los fallos: revisar los logs y ejecutar manualmente el cron o esperar el siguiente día.
+
+`vercel.json` programa la ejecución diaria a las 07:00 UTC (01:00 en Ciudad de
+México). En Hobby puede ejecutarse dentro de esa hora. Cada suscripción usa su
+propia zona horaria para determinar las fechas vencidas.
+
+Antes de desplegar, configurar `CRON_SECRET` en el entorno Production de Vercel
+con un secreto aleatorio independiente (por ejemplo, `openssl rand -hex 32`).
+Vercel envía `Authorization: Bearer <CRON_SECRET>` automáticamente. Sin secreto
+el endpoint devuelve 503; con autorización incorrecta, 401, sin generar cargos.
+El cron se activa al desplegar a producción; no se ejecuta en preview ni local.
 
 La creación genera inmediatamente las ocurrencias vencidas, incluida la de hoy.
 Si el inicio está en el futuro no genera cargos. Reanudar también genera el cargo

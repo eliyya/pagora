@@ -43,7 +43,7 @@ export async function generateDueSubscriptionCharges(
     return { created: charges.length, hasMore: schedule.hasMore }
 }
 
-/** Server-side batch entry point for the future scheduler. No public endpoint. */
+/** Server-side batch entry point used by the authenticated cron route. */
 export async function generateSubscriptionCharges({
     now = Temporal.Now.instant(), afterId, limit = 100,
 }: { now?: Temporal.Instant; afterId?: string; limit?: number } = {}) {

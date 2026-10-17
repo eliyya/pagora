@@ -4,6 +4,44 @@ import { Temporal } from 'temporal-polyfill'
 import type { Prisma } from '@/db/generated/prisma/client'
 import { generateDueSubscriptionCharges } from './subscription-charges'
 import { dueSubscriptionDates, resumedSubscriptionDate } from './subscriptions'
+import { runSubscriptionCron, validCronAuthorization } from './subscription-cron'
+
+test('cron authorization requires the exact bearer secret', () => {
+    assert.equal(validCronAuthorization('Bearer test-secret', 'test-secret'), true)
+    for (const value of [null, '', 'test-secret', 'Bearer wrong', 'Bearer test-secret ']) {
+        assert.equal(validCronAuthorization(value, 'test-secret'), false)
+    }
+})
+
+test('cron traverses pages and makes another pass for remaining occurrences', async () => {
+    const now = Temporal.Instant.from('2026-10-16T07:00:00Z')
+    const cursors: Array<string | undefined> = []
+    const results = [
+        { created: 120, pending: ['a'], errors: [], nextCursor: 'a' },
+        { created: 0, pending: [], errors: [], nextCursor: null },
+        { created: 1, pending: [], errors: [], nextCursor: 'a' },
+        { created: 0, pending: [], errors: [], nextCursor: null },
+    ]
+    const result = await runSubscriptionCron(async (options) => {
+        cursors.push(options.afterId)
+        assert.equal(options.now, now)
+        return results.shift()!
+    }, () => now)
+    assert.deepEqual(cursors, [undefined, 'a', undefined, 'a'])
+    assert.equal(result.created, 121)
+    assert.equal(result.complete, true)
+})
+
+test('cron reports failed subscriptions and deadline exhaustion', async () => {
+    const now = Temporal.Instant.from('2026-10-16T07:00:00Z')
+    const failed = await runSubscriptionCron(async () => ({ created: 0, pending: [], errors: ['a'], nextCursor: null }), () => now)
+    assert.equal(failed.complete, false)
+    assert.equal(failed.failed, 1)
+    let calls = 0
+    const timed = await runSubscriptionCron(async () => { throw new Error('Must not run after deadline') }, () => calls++ ? now.add({ seconds: 241 }) : now)
+    assert.equal(timed.timedOut, true)
+    assert.equal(timed.batches, 0)
+})
 
 const date = (value: string) => new Date(`${value}T00:00:00.000Z`)
 function fixture(status = 'active', zone = 'America/Mexico_City', start = '2026-01-31') {
