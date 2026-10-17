@@ -17,6 +17,8 @@ type ClientMutationBase<TType extends ClientMutationType> = {
 }
 
 export type ChargeCreateMutation = ClientMutationBase<'charge.create'> & {
+    // Calendar date in the creator's local time zone; optional for old outbox records.
+    scheduledFor?: string
     charge: {
         id: string
         name: string

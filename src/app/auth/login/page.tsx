@@ -1,4 +1,6 @@
 import { app } from '@/lib/routes'
+import { getCurrentUserAction } from '@/actions/users.action'
+import { redirect } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { ArrowRight, Clock3, ShieldCheck, Sparkles } from 'lucide-react'
 import Image from 'next/image'
@@ -9,6 +11,11 @@ interface LoginPageProps {
 }
 
 export default async function page({ searchParams }: LoginPageProps) {
+    const user = await getCurrentUserAction()
+    if (user) {
+        redirect(app.dashboard())
+    }
+
     const { error } = await searchParams
     const hasOAuthError = error === 'discord_oauth'
 
