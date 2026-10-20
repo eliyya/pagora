@@ -240,6 +240,13 @@ export function CreateChargeDialog() {
                                 disabled={saving}
                                 onValueChange={(values) => {
                                     if (!values.length) return
+                                    if (values[0] === 'deferred' && !firstInstallmentDate) {
+                                        setFirstInstallmentDate(
+                                            Temporal.Now.plainDateISO('America/Mexico_City')
+                                                .add({ months: 1 })
+                                                .toString(),
+                                        )
+                                    }
                                     if (values[0] === 'subscription' && !startsOn) {
                                         const zone = isSubscriptionTimeZone(timeZone.trim())
                                             ? timeZone.trim()
