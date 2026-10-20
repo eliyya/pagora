@@ -7,8 +7,14 @@ import { COOKIES, REDIRECT_PATH } from './lib/constants'
 import { db } from './db/prisma'
 import { createJWT, generateRefreshToken, weakHash } from './lib/crypt'
 import { Temporal } from 'temporal-polyfill'
+import { app } from '@/lib/routes'
 
 export async function proxy(request: NextRequest) {
+    // Let the OAuth handler validate callbacks, including malformed ones.
+    if (request.nextUrl.pathname === app.api.auth.login() &&
+        ['code', 'state', 'error'].some((key) => request.nextUrl.searchParams.has(key))) {
+        return NextResponse.next()
+    }
     const cookie = request.cookies.get(COOKIES.SESSION)?.value
     const refresh = request.cookies.get(COOKIES.REFRESH)?.value
 
@@ -28,14 +34,29 @@ export async function proxy(request: NextRequest) {
         }
         return await refreshToken(request, refresh)
     }
-    return NextResponse.next()
+    return authenticatedResponse(request)
 }
 
 export const config = {
-    matcher: ['/dashboard/:path*', '/api/cards/:cardId/sync'],
+    matcher: ['/dashboard/:path*', '/api/cards/:cardId/sync', '/auth/login', '/api/auth/login'],
+}
+
+function isLoginRequest(request: NextRequest) {
+    return request.nextUrl.pathname === app.auth.login() ||
+        request.nextUrl.pathname === app.api.auth.login()
+}
+
+function authenticatedResponse(request: NextRequest) {
+    if (isLoginRequest(request)) {
+        const response = NextResponse.redirect(new URL(app.dashboard(), APP_URL))
+        response.headers.set('Cache-Control', 'no-store')
+        return response
+    }
+    return NextResponse.next({ request: { headers: request.headers } })
 }
 
 function authenticationFailure(request: NextRequest) {
+    if (isLoginRequest(request)) return NextResponse.next()
     if (request.nextUrl.pathname.startsWith('/api/cards/')) {
         return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
     }
@@ -81,19 +102,19 @@ async function refreshToken(request: NextRequest, refresh: string) {
     })
     request.cookies.set(COOKIES.SESSION, jwt)
     request.cookies.set(COOKIES.REFRESH, refresh_token)
-    const response = NextResponse.next({
-        request: { headers: request.headers },
-    })
+    const response = authenticatedResponse(request)
     response.cookies.set(COOKIES.SESSION, jwt, {
         httpOnly: true,
         secure: NODE_ENV === 'production',
         sameSite: 'lax',
+        path: '/',
         maxAge: 60 * 60,
     })
     response.cookies.set(COOKIES.REFRESH, refresh_token, {
         httpOnly: true,
         secure: NODE_ENV === 'production',
         sameSite: 'lax',
+        path: '/',
         maxAge: 60 * 60 * 24 * 7,
     })
     return response
